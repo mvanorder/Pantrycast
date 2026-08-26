@@ -3,6 +3,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -42,14 +43,29 @@ function ThemedApp({ fontsSettled }: { fontsSettled: boolean }) {
   }, [isReady, fontsSettled]);
 
   return (
-    <PaperProvider theme={theme}>
+    <PaperProvider
+      theme={theme}
+      // Paper's default icon set ships with react-native-vector-icons; on Expo
+      // we point it at @expo/vector-icons so fonts load on iOS, Android and web.
+      settings={{ icon: (props) => <MaterialCommunityIcons {...props} /> }}>
+      {/* Individual screens with their own brand chrome (e.g. the
+          dashboard's blue header band) override this with their own
+          <StatusBar> while focused. */}
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.colors.background },
-        }}
-      />
+        }}>
+        <Stack.Screen name="index" />
+        {/* Dashboard draws its own brand header, so the native header is off.
+            Future drill-downs (item history, full shopping list) push onto
+            this same stack and get the standard back affordance — iOS
+            swipe-back and Android system back both work by default. A tab bar
+            would be premature with one real screen; add Tabs here once Trends
+            / Shopping list / Upload exist as peers. */}
+        <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
+      </Stack>
     </PaperProvider>
   );
 }

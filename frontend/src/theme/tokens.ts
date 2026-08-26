@@ -121,4 +121,12 @@ export const layout = {
     /** >= this width: side-by-side two-column sections (desktop web / large tablet). */
     expanded: 1024,
   },
+  /**
+   * Dashboard-specific breakpoints (its panels are two-up, not three-up, so
+   * they don't line up with `breakpoints.medium`/`expanded` above).
+   */
+  /** >= this width: the trending list and projected list sit side by side. */
+  twoColumnBreakpoint: 800,
+  /** < this width: KPI values step down a type size so they don't clip. */
+  compactBreakpoint: 400,
 } as const;
