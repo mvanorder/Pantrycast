@@ -51,7 +51,7 @@ describe('Login screen', () => {
     expect(screen.getByLabelText('Password')).toBeOnTheScreen();
   });
 
-  it('signs in with the trimmed credentials and returns home on success', async () => {
+  it('signs in with the trimmed credentials and goes to the dashboard on success', async () => {
     mockSignIn.mockResolvedValue(undefined);
 
     await renderWithProviders(<Login />);
@@ -65,7 +65,7 @@ describe('Login screen', () => {
         password: 's3cret-pass',
       }),
     );
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/'));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/dashboard'));
   });
 
   it('surfaces a rejected sign-in and does not navigate', async () => {

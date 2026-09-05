@@ -11,7 +11,7 @@ export default function Login() {
   const handleSubmit = useCallback(
     async (credentials: LoginCredentials) => {
       await signIn(credentials);
-      router.replace('/');
+      router.replace('/dashboard');
     },
     [signIn, router],
   );
