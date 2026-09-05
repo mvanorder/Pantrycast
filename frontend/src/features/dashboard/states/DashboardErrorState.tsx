@@ -10,7 +10,7 @@ type Props = {
 };
 
 /** Fetch-failed state: says what broke, offers one obvious way forward. */
-export function HomeErrorState({ message, onRetry }: Props) {
+export function DashboardErrorState({ message, onRetry }: Props) {
   const theme = useAppTheme();
 
   return (

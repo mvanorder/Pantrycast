@@ -20,7 +20,7 @@ const STEPS: { icon: 'download-outline' | 'file-delimited-outline' | 'chart-line
  * thing the backend actually supports (`POST /orders/upload`). One primary
  * action, plus a low-emphasis "how do I export" escape hatch.
  */
-export function HomeEmptyState({ onUpload, onLearnMore }: Props) {
+export function DashboardEmptyState({ onUpload, onLearnMore }: Props) {
   const theme = useAppTheme();
 
   return (

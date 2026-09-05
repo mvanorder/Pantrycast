@@ -11,7 +11,7 @@ type Props = {
 };
 
 /**
- * Pulsing placeholder block used by the Home screen's loading state. Layout
+ * Pulsing placeholder block used by the Dashboard screen's loading state. Layout
  * glue only — colour comes from the theme's `skeleton` token.
  */
 export function Skeleton({ width = '100%', height = 16, radius, style }: Props) {

@@ -3,7 +3,7 @@
  *
  * The backend currently only accepts a raw CSV upload (`POST /orders/upload`);
  * there is no trend-detection or shopping-list-projection endpoint to call. So
- * the Home screen renders these hand-written figures to show the intended
+ * the dashboard screen renders these hand-written figures to show the intended
  * end state. When the real endpoints land, replace this module with a data
  * hook that returns the same shapes — the components below take these types as
  * props and know nothing about where the numbers come from.
@@ -40,7 +40,7 @@ export type TrendingItem = {
   history: number[];
 };
 
-export type HomeData = {
+export type DashboardData = {
   kpis: Kpi[];
   trending: TrendingItem[];
 };
@@ -95,7 +95,7 @@ const TRENDING: TrendingItem[] = [
   },
 ];
 
-export const SAMPLE_HOME_DATA: Record<Period, HomeData> = {
+export const SAMPLE_DASHBOARD_DATA: Record<Period, DashboardData> = {
   month: {
     kpis: [
       {

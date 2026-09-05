@@ -3,7 +3,7 @@ import { Card, Text } from 'react-native-paper';
 
 import { Skeleton } from '@/components/Skeleton';
 import { layout, useAppTheme } from '@/theme';
-import type { Kpi } from '../data/sampleHome';
+import type { Kpi } from '../data/sampleDashboard';
 
 type Props = {
   kpis: Kpi[];

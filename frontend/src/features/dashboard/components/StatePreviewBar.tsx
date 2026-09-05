@@ -3,14 +3,14 @@ import { Surface, Text, TouchableRipple } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from '@/theme';
-import type { HomeViewState } from '../HomeScreen';
+import type { DashboardViewState } from '../Dashboard';
 
 type Props = {
-  state: HomeViewState;
-  onChange: (state: HomeViewState) => void;
+  state: DashboardViewState;
+  onChange: (state: DashboardViewState) => void;
 };
 
-const STATES: HomeViewState[] = ['loaded', 'loading', 'empty', 'error'];
+const STATES: DashboardViewState[] = ['loaded', 'loading', 'empty', 'error'];
 
 /**
  * DEV ONLY. Renders nothing in a production build. Lets a reviewer flip through

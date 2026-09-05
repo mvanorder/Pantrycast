@@ -4,7 +4,7 @@ import { Button, Card, Divider, Text } from 'react-native-paper';
 
 import { Skeleton } from '@/components/Skeleton';
 import { useAppTheme } from '@/theme';
-import { DUE_SOON_DAYS, type TrendingItem } from '../data/sampleHome';
+import { DUE_SOON_DAYS, type TrendingItem } from '../data/sampleDashboard';
 
 type Props = {
   items: TrendingItem[];

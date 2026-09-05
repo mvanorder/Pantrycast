@@ -3,7 +3,7 @@ import { Text, TouchableRipple } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { layout, useAppTheme } from '@/theme';
-import { PERIOD_OPTIONS, type Period } from '../data/sampleHome';
+import { PERIOD_OPTIONS, type Period } from '../data/sampleDashboard';
 
 type Props = {
   subtitle: string;
@@ -18,7 +18,7 @@ export function greetingForHour(hour: number): string {
 }
 
 /**
- * Brand band at the top of Home: eyebrow, time-of-day greeting, subtitle and an
+ * Brand band at the top of the dashboard: eyebrow, time-of-day greeting, subtitle and an
  * optional period toggle. Stays fixed above the scroll area so the period
  * filter is always reachable. Rounded bottom corners tie it to the card stack
  * below.
@@ -26,7 +26,7 @@ export function greetingForHour(hour: number): string {
  * The toggle is a radio group, not a set of buttons: exactly one period is
  * always active, which is what `radio` semantics describe to a screen reader.
  */
-export function HomeHeader({ subtitle, period, onPeriodChange }: Props) {
+export function DashboardHeader({ subtitle, period, onPeriodChange }: Props) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const greeting = greetingForHour(new Date().getHours());

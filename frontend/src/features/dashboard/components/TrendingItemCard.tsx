@@ -5,7 +5,7 @@ import { Card, Text, TouchableRipple } from 'react-native-paper';
 import { Skeleton } from '@/components/Skeleton';
 import { Sparkline } from '@/components/Sparkline';
 import { useAppTheme } from '@/theme';
-import type { TrendingItem } from '../data/sampleHome';
+import type { TrendingItem } from '../data/sampleDashboard';
 import { DuePill } from './DuePill';
 
 type Props = {

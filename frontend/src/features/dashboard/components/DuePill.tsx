@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
-import { DUE_SOON_DAYS } from '../data/sampleHome';
+import { DUE_SOON_DAYS } from '../data/sampleDashboard';
 
 type Props = {
   label: string;
