@@ -1,7 +1,8 @@
-import { useLocalSearchParams } from 'expo-router';
+import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 
+import { useAuth } from '@/features/auth/AuthContext';
 import { Dashboard, type DashboardViewState } from '@/features/dashboard/Dashboard';
 import { StatePreviewBar } from '@/features/dashboard/components/StatePreviewBar';
 
@@ -18,10 +19,22 @@ function parseState(value?: string | string[]): DashboardViewState {
  * Until the analysis endpoints exist there is nothing to fetch, so the view
  * state is seeded from a `?state=` query param (handy on web:
  * `/dashboard?state=empty`) and can be flipped with the dev-only preview bar.
+ *
+ * This route is private: a signed-out visitor is bounced to the public landing
+ * page. While the stored session is still being restored (`loading`) we render
+ * nothing rather than flash the dashboard or redirect prematurely.
  */
 export default function DashboardRoute() {
+  const { status } = useAuth();
   const params = useLocalSearchParams<{ state?: string }>();
   const [state, setState] = useState<DashboardViewState>(() => parseState(params.state));
+
+  if (status === 'unauthenticated') {
+    return <Redirect href="/" />;
+  }
+  if (status !== 'authenticated') {
+    return null;
+  }
 
   return (
     <>
