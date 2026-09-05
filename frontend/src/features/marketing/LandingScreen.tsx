@@ -2,6 +2,7 @@ import { useCallback, useRef } from 'react';
 import { ScrollView, StyleSheet, type LayoutChangeEvent } from 'react-native';
 
 import { useGetStartedNotice } from '@/components/GetStartedNotice';
+import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useAppTheme } from '@/theme';
 
 import { BottomCtaSection } from './components/BottomCtaSection';
@@ -11,9 +12,9 @@ import { SeeItInActionSection } from './components/SeeItInActionSection';
 
 /**
  * Public marketing landing page ("Problem to Preview"): hero, three steps,
- * dashboard preview, closing CTA band. The top bar and footer are global
- * chrome now - {@link AppShell} draws them around every route - so this screen
- * is just the scrolling body between them.
+ * dashboard preview, closing CTA band. The top bar is global chrome
+ * ({@link AppShell}) and the footer comes from {@link ScreenScrollView}, so
+ * this screen is just the sections in between.
  *
  * Sign-up does not exist yet, so every "Get started" affordance routes through
  * {@link useGetStartedNotice}, which acknowledges the tap with the shared
@@ -35,8 +36,8 @@ export function LandingScreen() {
   }, []);
 
   return (
-    <ScrollView
-      ref={scrollRef}
+    <ScreenScrollView
+      scrollRef={scrollRef}
       style={[styles.root, { backgroundColor: theme.colors.background }]}
       showsVerticalScrollIndicator={false}
     >
@@ -47,7 +48,7 @@ export function LandingScreen() {
       <HowItWorksSection onLayout={handleHowItWorksLayout} />
       <SeeItInActionSection onGetStarted={notifyGetStarted} />
       <BottomCtaSection onGetStarted={notifyGetStarted} />
-    </ScrollView>
+    </ScreenScrollView>
   );
 }
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, useWindowDimensions, View } from 'react-native';
 
+import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { layout, useAppTheme } from '@/theme';
 import { DashboardHeader } from './components/DashboardHeader';
 import { KpiRow, KpiRowSkeleton } from './components/KpiRow';
@@ -34,7 +34,6 @@ const SUBTITLE: Record<DashboardViewState, string> = {
 
 export function Dashboard({ state = 'loaded', onRetry }: Props) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<Period>('month');
 
@@ -59,14 +58,14 @@ export function Dashboard({ state = 'loaded', onRetry }: Props) {
         onPeriodChange={state === 'loaded' ? setPeriod : undefined}
       />
 
-      <ScrollView
+      <ScreenScrollView
         style={styles.scroll}
-        contentContainerStyle={[
+        bodyStyle={[
           styles.scrollContent,
           {
             paddingHorizontal: gutter,
             paddingTop: theme.spacing.xl,
-            paddingBottom: insets.bottom + theme.spacing.xxl,
+            paddingBottom: theme.spacing.xxl,
           },
         ]}>
         <View style={contentStyle}>
@@ -126,7 +125,7 @@ export function Dashboard({ state = 'loaded', onRetry }: Props) {
           {state === 'empty' ? <DashboardEmptyState /> : null}
           {state === 'error' ? <DashboardErrorState onRetry={onRetry} /> : null}
         </View>
-      </ScrollView>
+      </ScreenScrollView>
     </View>
   );
 }

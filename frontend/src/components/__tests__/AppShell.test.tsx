@@ -72,7 +72,7 @@ async function press(label: string) {
 }
 
 describe('AppShell', () => {
-  it('frames its children with the global header and footer', async () => {
+  it('frames its children with the global header', async () => {
     await renderWithProviders(
       <AppShell>
         <Text>route content</Text>
@@ -81,7 +81,6 @@ describe('AppShell', () => {
 
     expect(screen.getByText('route content')).toBeOnTheScreen();
     expect(screen.getByLabelText('Log in to Shopping Analysis')).toBeOnTheScreen();
-    expect(screen.getByText(/personal project for understanding/i)).toBeOnTheScreen();
   });
 
   it('shows and dismisses the shared "Get started" notice for descendants', async () => {

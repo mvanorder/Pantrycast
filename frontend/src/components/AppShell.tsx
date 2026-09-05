@@ -4,15 +4,16 @@ import { Snackbar } from 'react-native-paper';
 
 import { useAppTheme } from '@/theme';
 
-import { AppFooter } from './AppFooter';
 import { AppHeader } from './AppHeader';
 import { GetStartedNoticeContext } from './GetStartedNotice';
 
 /**
  * The persistent frame every route renders inside: the global {@link AppHeader}
- * on top, the active screen in the middle, the global {@link AppFooter} pinned
- * below. The header and footer live here rather than in each screen so they
- * stay put across navigation and are defined once.
+ * fixed on top, the active screen filling the rest. The header lives here
+ * rather than in each screen so it stays put across navigation and is defined
+ * once. The matching footer ({@link AppFooter}) rides each screen's scroll via
+ * {@link ScreenScrollView} instead of being pinned here, so it never covers
+ * content on a long page.
  *
  * It also owns the single "sign-up isn't wired up yet" Snackbar, handed to
  * descendants through {@link GetStartedNoticeContext} so the header CTA and the
@@ -41,7 +42,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             Sign-up isn&apos;t wired up yet — this is a preview of the landing page.
           </Snackbar>
         </View>
-        <AppFooter />
       </View>
     </GetStartedNoticeContext.Provider>
   );

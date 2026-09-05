@@ -2,7 +2,6 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StyleSheet,
   View,
   type TextInput as RNTextInput,
@@ -13,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
 import { BrandMark } from '@/components/BrandMark';
+import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { heading, layout, radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 /** The credentials a submitted, client-validated login form carries. */
@@ -119,12 +119,11 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
         style={styles.root}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView
-          contentContainerStyle={[
+        <ScreenScrollView
+          bodyStyle={[
             styles.scrollContent,
             {
-              paddingTop: insets.top + spacing.xl,
-              paddingBottom: insets.bottom + spacing.xl,
+              paddingVertical: spacing.xl,
               paddingHorizontal: gutter + Math.max(insets.left, insets.right),
             },
           ]}
@@ -243,7 +242,7 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
               Get started
             </Button>
           </View>
-        </ScrollView>
+        </ScreenScrollView>
       </KeyboardAvoidingView>
     </View>
   );
