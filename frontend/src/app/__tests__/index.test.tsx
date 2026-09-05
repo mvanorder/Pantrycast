@@ -4,10 +4,8 @@ import Index from '../index';
 
 // `Stack.Screen` only sets navigator options and needs a route context we do
 // not mount here; a no-op stand-in keeps the test to the screen's own content.
-// `useRouter` is stubbed because the landing header's "Log in" action reads it.
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
-  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
 }));
 
 describe('Index screen', () => {

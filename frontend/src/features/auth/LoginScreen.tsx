@@ -12,7 +12,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
-import { BrandMark } from '@/features/marketing/components/BrandMark';
+import { BrandMark } from '@/components/BrandMark';
 import { heading, layout, radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 /** The credentials a submitted, client-validated login form carries. */

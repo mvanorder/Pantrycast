@@ -1,4 +1,4 @@
-import { renderWithProviders, screen } from '../../../../../test-utils/render';
+import { renderWithProviders, screen } from '../../../test-utils/render';
 import { BrandMark } from '../BrandMark';
 
 describe('BrandMark', () => {

@@ -7,6 +7,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { PaperProvider } from 'react-native-paper';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { AppShell } from '@/components/AppShell';
 import { AuthProvider } from '@/features/auth/AuthContext';
 import {
   appFonts,
@@ -52,20 +53,24 @@ function ThemedApp({ fontsSettled }: { fontsSettled: boolean }) {
           dashboard's blue header band) override this with their own
           <StatusBar> while focused. */}
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.colors.background },
-        }}>
-        <Stack.Screen name="index" />
-        {/* Dashboard draws its own brand header, so the native header is off.
-            Future drill-downs (item history, full shopping list) push onto
-            this same stack and get the standard back affordance — iOS
-            swipe-back and Android system back both work by default. A tab bar
-            would be premature with one real screen; add Tabs here once Trends
-            / Shopping list / Upload exist as peers. */}
-        <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-      </Stack>
+      {/* The global top bar and footer live in AppShell, so they stay put
+          across navigation and every route renders between them. */}
+      <AppShell>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.colors.background },
+          }}>
+          <Stack.Screen name="index" />
+          {/* Dashboard draws its own brand header, so the native header is off.
+              Future drill-downs (item history, full shopping list) push onto
+              this same stack and get the standard back affordance — iOS
+              swipe-back and Android system back both work by default. A tab bar
+              would be premature with one real screen; add Tabs here once Trends
+              / Shopping list / Upload exist as peers. */}
+          <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
+        </Stack>
+      </AppShell>
     </PaperProvider>
   );
 }

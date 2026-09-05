@@ -1,32 +1,42 @@
+import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { Button, Icon, Surface, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useAuth } from '@/features/auth/AuthContext';
 import { layout, radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 import { BrandMark } from './BrandMark';
 import { ThemeToggle } from './ThemeToggle';
-
-type LandingTopBarProps = {
-  onGetStarted: () => void;
-  onLogIn: () => void;
-  /**
-   * When set, the bar shows the signed-in identity and a "Log out" action in
-   * place of the "Log in" / "Get started" pair.
-   */
-  account?: { label: string; onLogOut: () => void };
-};
+import { useGetStartedNotice } from './GetStartedNotice';
 
 /**
- * Sticky marketing header: brand lockup left, single primary action right.
- * Deliberately not a Paper `Appbar.Header` - this is a public web-style
- * landing page, not an in-app screen with a back affordance, and an Appbar
- * would imply navigation chrome that does not exist here.
+ * Global app header: brand lockup left, theme toggle plus the session actions
+ * right. Rendered once by {@link AppShell} so it sits above every route rather
+ * than each screen drawing its own.
+ *
+ * Deliberately not a Paper `Appbar.Header` - this app is a public web-style
+ * site with no per-screen back affordance, and an Appbar would imply navigation
+ * chrome that does not exist here.
+ *
+ * Signed out it shows "Log in" (routes to `/login`) and "Get started"; since
+ * sign-up does not exist yet, "Get started" acknowledges the tap with the
+ * shared Snackbar {@link AppShell} owns rather than silently doing nothing.
+ * Once a session is authenticated the bar shows the signed-in identity and a
+ * "Log out" action in its place.
  */
-export function LandingTopBar({ onGetStarted, onLogIn, account }: LandingTopBarProps) {
+export function AppHeader() {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const { gutter, isCompact } = useResponsive();
+  const router = useRouter();
+  const { status, user, signOut } = useAuth();
+  const notifyGetStarted = useGetStartedNotice();
+
+  const account =
+    status === 'authenticated' && user
+      ? { label: user.display_name ?? user.email, onLogOut: () => void signOut() }
+      : undefined;
 
   return (
     <Surface
@@ -94,7 +104,7 @@ export function LandingTopBar({ onGetStarted, onLogIn, account }: LandingTopBarP
                   actions still fit one row on the narrowest phones. */}
               <Button
                 mode="text"
-                onPress={onLogIn}
+                onPress={() => router.push('/login')}
                 compact
                 style={styles.cta}
                 contentStyle={styles.logInContent}
@@ -106,7 +116,7 @@ export function LandingTopBar({ onGetStarted, onLogIn, account }: LandingTopBarP
               </Button>
               <Button
                 mode="contained"
-                onPress={onGetStarted}
+                onPress={notifyGetStarted}
                 compact={isCompact}
                 style={styles.cta}
                 contentStyle={styles.ctaContent}

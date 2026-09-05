@@ -11,9 +11,15 @@ import RootLayout from '../_layout';
 // temporal dead zone when the factory runs.
 jest.mock('expo-router', () => ({
   Stack: jest.fn(() => null),
+  // AppShell's global header (rendered around the Stack) reads `useRouter`.
+  useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
 }));
 
+// Only `useFonts` is overridden — the rest of expo-font stays real so
+// @expo/vector-icons' `Font.isLoaded` still works when the global AppShell
+// header renders its icons.
 jest.mock('expo-font', () => ({
+  ...jest.requireActual('expo-font'),
   useFonts: jest.fn(() => [true, null]),
 }));
 

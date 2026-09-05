@@ -1,6 +1,6 @@
 import * as ReactNative from 'react-native';
 
-import { renderWithProviders, fireEvent, screen, waitFor } from '../../../../../test-utils/render';
+import { renderWithProviders, fireEvent, screen, waitFor } from '../../../test-utils/render';
 import { ThemeToggle } from '../ThemeToggle';
 
 afterEach(() => jest.restoreAllMocks());
