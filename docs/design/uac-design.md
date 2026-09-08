@@ -7,9 +7,16 @@ built. `orders`/`order_items` are deliberately excluded pending plan refinement 
 `create-superuser` bootstrap CLI (§2) is built, including argon2 password hashing. The core
 password-auth HTTP loop is also now built and verified end-to-end against a real Postgres instance:
 `register`/`login`/`refresh`/`logout`/`logout-all`, JWT issuance/verification, and the
-`get_current_user` dependency (§1 "Authentication endpoints"). Still design-only: RBAC enforcement
+`get_current_user` dependency (§1 "Authentication endpoints"). A **frontend** auth client now
+consumes that surface (`frontend/src/api/`, `frontend/src/features/auth/`): a `Bearer`-header HTTP
+client, `login`/`logout`/`GET /users/me` wrappers, an `AuthProvider` that hydrates a stored session
+on startup, a `/login` screen, and a `/dashboard` route that redirects a signed-out visitor to the
+public landing page (§1 "Transport" / "Client"). Still design-only: RBAC enforcement
 (§3), the Google OAuth flow (§4), and email verification/password reset (both need an email sender
-that doesn't exist yet).
+that doesn't exist yet). Still stubbed on the client: silent access-token refresh on a 401, a
+hardened token store (native SecureStore / a resolved web-storage story — open question 7), and any
+sign-up UI (the backend `POST /auth/register` has no screen — "Get started" surfaces a
+"not built yet" notice).
 Scope: user accounts, authentication, authorization (RBAC), and the container/deployment
 architecture needed to run this at anywhere from single-user to millions-of-users scale.
 
@@ -104,8 +111,25 @@ not a cookie — because Expo Router (`frontend/`) ships the same codebase to na
 web, and a header is the one mechanism that works identically across all three without a
 web-only/native-only branch in the HTTP client. The refresh token is returned once, in the
 `POST /auth/login` response body, and the client is responsible for storing it (Expo
-`SecureStore` on native; **web storage is an open question below** — `localStorage` is readable by
+`SecureStore` on native; **web storage is open question 7** — `localStorage` is readable by
 any injected script, so it carries real XSS exposure that native's SecureStore doesn't).
+
+**Client [core loop implemented]** (`frontend/src/api/client.ts`, `frontend/src/features/auth/`):
+
+- `apiRequest` sends the `Authorization: Bearer` header as designed and normalizes every failure to
+  an `ApiError` carrying the HTTP `status` (`0` for a transport failure) and the API's `detail`
+  string — so screens branch on `status`, not prose.
+- `AuthContext` (`AuthProvider` / `useAuth`) holds `status` (`loading` → `authenticated` |
+  `unauthenticated`), the `GET /users/me` profile, and `signIn` / `signOut`. On startup it reads
+  the stored access token and validates it with `GET /users/me`; on any rejection it clears the
+  pair and starts signed out. `signOut` calls `POST /auth/logout` best-effort, then clears locally.
+- **Token store is a deliberate placeholder.** `tokenStorage.ts` uses `AsyncStorage` (plain,
+  unencrypted, same code path on native and web) as the single seam — not yet `expo-secure-store`
+  on native, and the web exposure above is unresolved. Nothing else in the app touches those keys.
+- **Not built on the client yet:** silent `POST /auth/refresh` on a 401 (`AuthContext` treats a
+  server-rejected token as signed-out instead — see "Error contract" below), 403 handling (nothing
+  returns 403 until §3), and a sign-up screen (the header/landing "Get started" routes through one
+  `GetStartedNotice` handler that shows a "not wired up yet" Snackbar).
 
 **Endpoints:**
 
@@ -146,7 +170,9 @@ verification any protected route needs:
 
 - **401** — missing, malformed, expired, or signature-invalid access token. The frontend's
   response is always the same regardless of *which* of those it was: silently attempt
-  `POST /auth/refresh`, and only surface a login prompt if that also fails.
+  `POST /auth/refresh`, and only surface a login prompt if that also fails. **As built today the
+  client skips the refresh attempt** — `AuthContext` treats any 401 on the stored token as a
+  signed-out state and clears the pair; wiring the silent refresh is the next client task.
 - **403** — the token is valid but `require_permission` says no (§3's "can this role do this" or
   the ownership check both land here). The frontend should *not* retry or refresh on 403 — retrying
   a refresh won't fix an authorization gap. **Not reachable yet** — nothing returns 403 until §3's
@@ -526,3 +552,10 @@ lock the project out of moving to Cloud Run/ECS later without a rewrite.
    promoting an existing account also set `email_verified = true`, and should it refuse a
    `disabled` account rather than silently re-enabling privileges? Should the interactive
    password prompt enforce a minimum length?
+7. Web refresh-token storage (§1 "Transport"). Native has `expo-secure-store`; the web build has
+   no equivalent — `localStorage`/`AsyncStorage` is readable by any injected script. Options:
+   accept the XSS exposure for the web target, keep the refresh token in memory only on web (a
+   full re-login on every reload), or move to an `HttpOnly` refresh-token cookie for the web build
+   specifically (reintroduces the web-only/native-only HTTP-client branch the header transport was
+   chosen to avoid, and needs CSRF defenses). Until this is decided the client stays on the plain
+   `AsyncStorage` placeholder in `tokenStorage.ts`.
