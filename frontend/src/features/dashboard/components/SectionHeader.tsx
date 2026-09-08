@@ -1,10 +1,14 @@
 import { StyleSheet, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 
-import { useAppTheme } from '@/theme';
+import { layout, spacing, useAppTheme } from '@/theme';
 
-/** Row height + bottom margin, so other columns can align to it. */
-export const SECTION_HEADER_HEIGHT = 52;
+/**
+ * Row min-height + bottom margin, so a sibling column can reserve the same
+ * vertical space and stay aligned. Derived from the same tokens the style uses
+ * so the two can't drift.
+ */
+export const SECTION_HEADER_HEIGHT = layout.minTouchTarget + spacing.sm;
 
 type Props = {
   title: string;
@@ -41,11 +45,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    minHeight: 44,
+    minHeight: layout.minTouchTarget,
   },
   actionContent: {
-    height: 44,
-    paddingHorizontal: 4,
+    height: layout.minTouchTarget,
+    paddingHorizontal: spacing.xxs,
   },
   actionLabel: {
     marginVertical: 0,

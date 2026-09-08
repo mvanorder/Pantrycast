@@ -22,8 +22,12 @@ export function Sparkline({ data, width = 56, height = 22, color, accessibilityL
   const stroke = color ?? theme.colors.brandBright;
 
   const padding = 2;
-  const min = Math.min(...data);
-  const max = Math.max(...data);
+  // `data` is fed by a module standing in for a real `/analysis/trends`
+  // response, so an item with fewer than one observed interval is a real case:
+  // guard the reductions and the trailing-dot lookup rather than let an empty
+  // array white-screen the whole dashboard.
+  const min = data.length ? Math.min(...data) : 0;
+  const max = data.length ? Math.max(...data) : 0;
   const span = max - min || 1;
   const stepX = data.length > 1 ? (width - padding * 2) / (data.length - 1) : 0;
 
@@ -50,7 +54,7 @@ export function Sparkline({ data, width = 56, height = 22, color, accessibilityL
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        <Circle cx={last.x} cy={last.y} r={2.5} fill={stroke} />
+        {last ? <Circle cx={last.x} cy={last.y} r={2.5} fill={stroke} /> : null}
       </Svg>
     </View>
   );

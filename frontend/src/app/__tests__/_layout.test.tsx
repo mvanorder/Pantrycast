@@ -11,8 +11,10 @@ import RootLayout from '../_layout';
 // temporal dead zone when the factory runs.
 jest.mock('expo-router', () => ({
   Stack: jest.fn(() => null),
-  // AppShell's global header (rendered around the Stack) reads `useRouter`.
+  // AppShell's global header (rendered around the Stack) reads `useRouter` and
+  // `usePathname`.
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  usePathname: () => '/',
 }));
 
 // Only `useFonts` is overridden — the rest of expo-font stays real so

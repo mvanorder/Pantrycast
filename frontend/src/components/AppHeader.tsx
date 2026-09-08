@@ -1,4 +1,4 @@
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 import { Button, Icon, Surface, Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,6 +30,7 @@ export function AppHeader() {
   const insets = useSafeAreaInsets();
   const { gutter, isCompact } = useResponsive();
   const router = useRouter();
+  const pathname = usePathname();
   const { status, user, signOut } = useAuth();
   const notifyGetStarted = useGetStartedNotice();
 
@@ -101,19 +102,23 @@ export function AppHeader() {
           ) : (
             <>
               {/* Text button with a slim hit area so brand mark, toggle and both
-                  actions still fit one row on the narrowest phones. */}
-              <Button
-                mode="text"
-                onPress={() => router.push('/login')}
-                compact
-                style={styles.cta}
-                contentStyle={styles.logInContent}
-                labelStyle={styles.ctaLabel}
-                accessibilityRole="button"
-                accessibilityLabel="Log in to Shopping Analysis"
-              >
-                Log in
-              </Button>
+                  actions still fit one row on the narrowest phones. Hidden on
+                  `/login` itself — the header is global now, and a "Log in" that
+                  re-pushes the current route just stacks history entries. */}
+              {pathname === '/login' ? null : (
+                <Button
+                  mode="text"
+                  onPress={() => router.push('/login')}
+                  compact
+                  style={styles.cta}
+                  contentStyle={styles.logInContent}
+                  labelStyle={styles.ctaLabel}
+                  accessibilityRole="button"
+                  accessibilityLabel="Log in to Shopping Analysis"
+                >
+                  Log in
+                </Button>
+              )}
               <Button
                 mode="contained"
                 onPress={notifyGetStarted}

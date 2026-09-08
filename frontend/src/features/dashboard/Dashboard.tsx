@@ -75,15 +75,16 @@ export function Dashboard({ state = 'loaded', onRetry }: Props) {
 
               <View style={[twoColumn ? styles.columns : styles.stack, { gap: theme.spacing.xl }]}>
                 <View style={columnStyle}>
-                  <SectionHeader
-                    title="Trending consumables"
-                    actionLabel="See all"
-                    // Stub: the trends screen doesn't exist yet.
-                    onActionPress={() => {}}
-                  />
+                  {/* No `actionLabel`/handler: the trends screen doesn't exist
+                      yet, and this repo prefers omitting an affordance to
+                      shipping a dead one. */}
+                  <SectionHeader title="Trending consumables" />
                   <View style={{ gap: theme.spacing.md }}>
                     {data.trending.map((item) => (
-                      <TrendingItemCard key={item.id} item={item} onPress={() => {}} />
+                      // No `onPress` until the item-history screen exists — the
+                      // card renders as static content rather than a button that
+                      // does nothing.
+                      <TrendingItemCard key={item.id} item={item} />
                     ))}
                   </View>
                 </View>
@@ -92,7 +93,9 @@ export function Dashboard({ state = 'loaded', onRetry }: Props) {
                   {/* Spacer keeps the panel's top edge aligned with the first
                       trending card when the two columns sit side by side. */}
                   {twoColumn ? <View style={{ height: SECTION_HEADER_HEIGHT }} /> : null}
-                  <ProjectedShoppingList items={data.trending} onViewFullList={() => {}} />
+                  {/* No `onViewFullList`: the full-list screen isn't built, so
+                      the panel disables that button rather than feign it. */}
+                  <ProjectedShoppingList items={data.trending} />
                 </View>
               </View>
             </>
