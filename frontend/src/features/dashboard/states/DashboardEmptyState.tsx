@@ -68,10 +68,14 @@ export function DashboardEmptyState({ onUpload, onLearnMore }: Props) {
       </Card.Content>
 
       <Card.Actions style={[styles.actions, { paddingHorizontal: theme.spacing.xl, paddingBottom: theme.spacing.xl }]}>
+        {/* CSV upload has no screen yet. Until a handler is passed these render
+            disabled — an honest "not built" rather than a live-looking primary
+            CTA that swallows the tap on the one screen a first-run user sees. */}
         <Button
           mode="contained"
           icon="tray-arrow-up"
           onPress={onUpload}
+          disabled={!onUpload}
           accessibilityLabel="Upload order history CSV"
           style={styles.grow}
           contentStyle={styles.buttonContent}>
@@ -80,6 +84,7 @@ export function DashboardEmptyState({ onUpload, onLearnMore }: Props) {
         <Button
           mode="text"
           onPress={onLearnMore}
+          disabled={!onLearnMore}
           accessibilityLabel="Learn how to export your orders from Walmart"
           style={styles.grow}
           contentStyle={styles.buttonContent}>

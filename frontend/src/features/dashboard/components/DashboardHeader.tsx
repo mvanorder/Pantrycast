@@ -1,6 +1,5 @@
 import { StyleSheet, View } from 'react-native';
 import { Text, TouchableRipple } from 'react-native-paper';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { layout, useAppTheme } from '@/theme';
 import { PERIOD_OPTIONS, type Period } from '../data/sampleDashboard';
@@ -28,7 +27,6 @@ export function greetingForHour(hour: number): string {
  */
 export function DashboardHeader({ subtitle, period, onPeriodChange }: Props) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const greeting = greetingForHour(new Date().getHours());
 
   return (
@@ -37,7 +35,10 @@ export function DashboardHeader({ subtitle, period, onPeriodChange }: Props) {
         styles.band,
         {
           backgroundColor: theme.colors.headerBackground,
-          paddingTop: insets.top + theme.spacing.lg,
+          // `AppShell` renders the global `AppHeader` above every route and it
+          // already pays the top safe-area inset, so this band no longer touches
+          // the notch — a plain token pad, not `insets.top + …`.
+          paddingTop: theme.spacing.lg,
           paddingBottom: theme.spacing.lg,
           paddingHorizontal: theme.spacing.lg,
           borderBottomLeftRadius: theme.radius.xl,

@@ -6,6 +6,9 @@ import { Skeleton } from '@/components/Skeleton';
 import { useAppTheme } from '@/theme';
 import { DUE_SOON_DAYS, type TrendingItem } from '../data/sampleDashboard';
 
+/** Row icon glyph size, reused for the divider inset and the loading skeleton. */
+const ITEM_ICON_SIZE = 22;
+
 type Props = {
   items: TrendingItem[];
   onViewFullList?: () => void;
@@ -52,7 +55,11 @@ export function ProjectedShoppingList({ items, onViewFullList }: Props) {
       <View style={{ marginTop: theme.spacing.md }}>
         {sorted.map((item, index) => (
           <View key={item.id}>
-            {index > 0 ? <Divider style={{ marginLeft: 56 }} /> : null}
+            {index > 0 ? (
+              <Divider
+                style={{ marginLeft: theme.spacing.lg + ITEM_ICON_SIZE + theme.spacing.md }}
+              />
+            ) : null}
             <View
               accessible
               accessibilityRole="text"
@@ -63,7 +70,7 @@ export function ProjectedShoppingList({ items, onViewFullList }: Props) {
               ]}>
               <MaterialCommunityIcons
                 name="checkbox-blank-circle-outline"
-                size={22}
+                size={ITEM_ICON_SIZE}
                 color={theme.colors.outline}
               />
               <View style={styles.itemBody}>
@@ -91,6 +98,9 @@ export function ProjectedShoppingList({ items, onViewFullList }: Props) {
         <Button
           mode="outlined"
           onPress={onViewFullList}
+          // The full-list screen isn't built yet; a disabled button reads as
+          // "coming", an enabled one that does nothing reads as broken.
+          disabled={!onViewFullList}
           icon="format-list-checks"
           accessibilityLabel="View full shopping list"
           style={styles.fullWidthButton}
@@ -113,7 +123,7 @@ export function ProjectedShoppingListSkeleton() {
         <Skeleton width="45%" height={12} style={{ marginTop: theme.spacing.sm }} />
         {[0, 1, 2, 3].map((index) => (
           <View key={index} style={[styles.itemRow, { marginTop: theme.spacing.lg, gap: theme.spacing.md }]}>
-            <Skeleton width={22} height={22} radius={theme.radius.pill} />
+            <Skeleton width={ITEM_ICON_SIZE} height={ITEM_ICON_SIZE} radius={theme.radius.pill} />
             <View style={styles.itemBody}>
               <Skeleton width="50%" height={14} />
             </View>

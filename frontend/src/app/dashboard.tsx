@@ -1,6 +1,5 @@
 import { Redirect, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
 
 import { useAuth } from '@/features/auth/AuthContext';
 import { Dashboard, type DashboardViewState } from '@/features/dashboard/Dashboard';
@@ -36,12 +35,11 @@ export default function DashboardRoute() {
     return null;
   }
 
+  // The status bar sits above the global `AppHeader` (a themed surface), not the
+  // dashboard's blue band, so the root layout's scheme-aware `<StatusBar>` is
+  // already right here — no per-screen override.
   return (
     <>
-      {/* The header band is dark blue regardless of scheme, so status bar
-          content on this screen stays light even though the root layout
-          otherwise follows the OS light/dark scheme. */}
-      <StatusBar style="light" />
       <Dashboard state={state} onRetry={() => setState('loaded')} />
       <StatePreviewBar state={state} onChange={setState} />
     </>

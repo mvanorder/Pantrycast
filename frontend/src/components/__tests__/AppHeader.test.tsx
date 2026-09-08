@@ -29,8 +29,11 @@ const mockRouterPush = jest.fn();
 
 // The header navigates to `/login` through `useRouter`; there is no router
 // context mounted here, so stub the hook and assert on the push.
+let mockPathname = '/';
+
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: mockRouterPush, replace: jest.fn() }),
+  usePathname: () => mockPathname,
 }));
 
 const mockedUseWindowDimensions = jest.mocked(useWindowDimensions);
@@ -57,6 +60,7 @@ function renderHeader(onGetStarted: () => void = jest.fn()) {
 
 beforeEach(() => {
   mockAuth = { status: 'unauthenticated', user: null, signOut: mockSignOut };
+  mockPathname = '/';
 });
 
 afterEach(() => {
@@ -74,6 +78,15 @@ describe('AppHeader', () => {
 
     expect(mockRouterPush).toHaveBeenCalledWith('/login');
     expect(screen.queryByLabelText('Log out')).not.toBeOnTheScreen();
+  });
+
+  it('hides the "Log in" action when already on the login route', async () => {
+    setViewport(1280);
+    mockPathname = '/login';
+    await renderHeader();
+
+    expect(screen.queryByLabelText('Log in to Shopping Analysis')).not.toBeOnTheScreen();
+    expect(screen.getByLabelText('Get started with Shopping Analysis')).toBeOnTheScreen();
   });
 
   it('routes the "Get started" action through the shared notice', async () => {

@@ -15,48 +15,61 @@ type Props = {
 
 /**
  * One consumable: tinted icon, name + pack size, cadence caption, sparkline and
- * a due pill. The whole row is one touch target (>=44pt tall) that will later
- * drill into the item's purchase history.
+ * a due pill. When `onPress` is supplied the whole row is one touch target
+ * (>=44pt tall) that drills into the item's purchase history; without it the row
+ * is static content — no button role, and no "opens purchase history" hint the
+ * tap wouldn't keep.
  */
 export function TrendingItemCard({ item, onPress }: Props) {
   const theme = useAppTheme();
+  const label = `${item.name}, ${item.packSize}. ${item.cadence}. Due ${item.dueLabel}.`;
+
+  const row = (
+    <View style={[styles.row, { gap: theme.spacing.md }]}>
+      <View
+        style={[
+          styles.iconWell,
+          { backgroundColor: theme.colors.primaryContainer, borderRadius: theme.radius.pill },
+        ]}>
+        <MaterialCommunityIcons name={item.icon} size={22} color={theme.colors.onPrimaryContainer} />
+      </View>
+
+      <View style={styles.body}>
+        <Text variant="titleSmall" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
+          {item.name}
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            {`  ·  ${item.packSize}`}
+          </Text>
+        </Text>
+        <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>
+          {item.cadence}
+        </Text>
+      </View>
+
+      <View style={[styles.trailing, { gap: theme.spacing.xs }]}>
+        <Sparkline data={item.history} />
+        <DuePill label={item.dueLabel} dueInDays={item.dueInDays} />
+      </View>
+    </View>
+  );
 
   return (
     <Card mode="outlined" style={styles.card}>
-      <TouchableRipple
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={`${item.name}, ${item.packSize}. ${item.cadence}. Due ${item.dueLabel}.`}
-        accessibilityHint="Opens purchase history"
-        borderless={false}
-        style={[styles.ripple, { borderRadius: theme.roundness * 4, padding: theme.spacing.md }]}>
-        <View style={[styles.row, { gap: theme.spacing.md }]}>
-          <View
-            style={[
-              styles.iconWell,
-              { backgroundColor: theme.colors.primaryContainer, borderRadius: theme.radius.pill },
-            ]}>
-            <MaterialCommunityIcons name={item.icon} size={22} color={theme.colors.onPrimaryContainer} />
-          </View>
-
-          <View style={styles.body}>
-            <Text variant="titleSmall" numberOfLines={1} style={{ color: theme.colors.onSurface }}>
-              {item.name}
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                {`  ·  ${item.packSize}`}
-              </Text>
-            </Text>
-            <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>
-              {item.cadence}
-            </Text>
-          </View>
-
-          <View style={[styles.trailing, { gap: theme.spacing.xs }]}>
-            <Sparkline data={item.history} />
-            <DuePill label={item.dueLabel} dueInDays={item.dueInDays} />
-          </View>
+      {onPress ? (
+        <TouchableRipple
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          accessibilityHint="Opens purchase history"
+          borderless={false}
+          style={[styles.ripple, { borderRadius: theme.roundness * 4, padding: theme.spacing.md }]}>
+          {row}
+        </TouchableRipple>
+      ) : (
+        <View accessible accessibilityLabel={label} style={[styles.ripple, { padding: theme.spacing.md }]}>
+          {row}
         </View>
-      </TouchableRipple>
+      )}
     </Card>
   );
 }

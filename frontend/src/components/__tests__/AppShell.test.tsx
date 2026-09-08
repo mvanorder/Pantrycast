@@ -18,6 +18,7 @@ jest.mock('../../features/auth/AuthContext', () => ({
 
 jest.mock('expo-router', () => ({
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),
+  usePathname: () => '/',
 }));
 
 // Paper's Snackbar runs an entrance animation whose `Animated.start()` callback

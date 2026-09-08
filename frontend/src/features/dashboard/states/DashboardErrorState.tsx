@@ -39,6 +39,7 @@ export function DashboardErrorState({ message, onRetry }: Props) {
           mode="contained"
           icon="refresh"
           onPress={onRetry}
+          disabled={!onRetry}
           accessibilityLabel="Try loading the dashboard again"
           style={styles.grow}
           contentStyle={styles.buttonContent}>
