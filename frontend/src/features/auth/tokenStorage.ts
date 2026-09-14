@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import type { TokenPair } from './api';
 
-const ACCESS_TOKEN_KEY = 'shopping-analysis/auth/access-token';
-const REFRESH_TOKEN_KEY = 'shopping-analysis/auth/refresh-token';
+const ACCESS_TOKEN_KEY = 'pantrycast/auth/access-token';
+const REFRESH_TOKEN_KEY = 'pantrycast/auth/refresh-token';
 
 /**
  * Persists the token pair from a successful login.

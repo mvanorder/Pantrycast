@@ -5,7 +5,7 @@ import { LandingScreen } from '@/features/marketing/LandingScreen';
 export default function Index() {
   return (
     <>
-      <Stack.Screen options={{ title: 'Shopping Analysis' }} />
+      <Stack.Screen options={{ title: 'Pantrycast' }} />
       <LandingScreen />
     </>
   );

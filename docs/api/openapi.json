@@ -1,8 +1,8 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Shopping Analysis API",
-    "description": "Backend for the Shopping Analysis project: order-history ingestion and, as of this pass, account registration/login. See `docs/design/` for the full system design; this schema is generated from the running app via `python -m app.cli export-openapi`.",
+    "title": "Pantrycast API",
+    "description": "Backend for the Pantrycast project: order-history ingestion and, as of this pass, account registration/login. See `docs/design/` for the full system design; this schema is generated from the running app via `python -m app.cli export-openapi`.",
     "version": "0.1.0"
   },
   "paths": {

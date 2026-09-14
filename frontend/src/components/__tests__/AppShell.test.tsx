@@ -81,7 +81,7 @@ describe('AppShell', () => {
     );
 
     expect(screen.getByText('route content')).toBeOnTheScreen();
-    expect(screen.getByLabelText('Log in to Shopping Analysis')).toBeOnTheScreen();
+    expect(screen.getByLabelText('Log in to Pantrycast')).toBeOnTheScreen();
   });
 
   it('shows and dismisses the shared "Get started" notice for descendants', async () => {
@@ -113,7 +113,7 @@ describe('AppShell', () => {
       </AppShell>,
     );
 
-    await press('Get started with Shopping Analysis');
+    await press('Get started with Pantrycast');
 
     await waitFor(() =>
       expect(screen.getByText(/Sign-up isn.t wired up yet/)).toBeOnTheScreen(),

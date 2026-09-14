@@ -31,7 +31,7 @@ bundle **at build time**. For the `static` target, pass it as a build arg — th
 compose overlays require it:
 
 ```bash
-EXPO_PUBLIC_API_URL=https://shopping.example.com \
+EXPO_PUBLIC_API_URL=https://pantrycast.example.com \
   docker compose -f docker-compose.yml -f docker-compose.prod.yml build proxy
 ```
 

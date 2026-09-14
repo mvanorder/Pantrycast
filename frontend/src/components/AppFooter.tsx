@@ -33,7 +33,7 @@ export function AppFooter() {
           variant="bodySmall"
           style={[styles.text, { color: theme.colors.onSurfaceVariant }]}
         >
-          Shopping Analysis — a personal project for understanding your own shopping
+          Pantrycast — a personal project for understanding your own shopping
           habits.
         </Text>
         <Text

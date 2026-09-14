@@ -7,7 +7,7 @@ import {
   useThemePreference,
 } from '../ThemePreference';
 
-const STORAGE_KEY = 'shopping-analysis/theme-mode';
+const STORAGE_KEY = 'pantrycast/theme-mode';
 
 function mockSystemScheme(scheme: 'light' | 'dark' | null) {
   jest

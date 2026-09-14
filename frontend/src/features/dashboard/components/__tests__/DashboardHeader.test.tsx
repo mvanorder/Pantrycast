@@ -13,7 +13,7 @@ describe('DashboardHeader', () => {
   it('renders the eyebrow, greeting and subtitle, and no toggle without period props', async () => {
     await renderWithProviders(<DashboardHeader subtitle="A subtitle" />);
 
-    expect(screen.getByText('SHOPPING ANALYSIS')).toBeOnTheScreen();
+    expect(screen.getByText('PANTRYCAST')).toBeOnTheScreen();
     expect(screen.getByText('A subtitle')).toBeOnTheScreen();
     expect(screen.queryByLabelText('Reporting period')).toBeNull();
   });

@@ -1,8 +1,8 @@
 {
   "info": {
     "_postman_id": "6b49adc0-1d36-48fa-bfd9-cbbeda5fd6ea",
-    "name": "Shopping Analysis API",
-    "description": "Backend for the Shopping Analysis project. Covers every endpoint in docs/api/openapi.json: health checks, order-history CSV upload, and the register/login/refresh/logout auth loop (see docs/design/uac-design.md §1). Run the Auth folder top-to-bottom once to populate the tokens the Users/logout requests need — see postman/README.md.",
+    "name": "Pantrycast API",
+    "description": "Backend for the Pantrycast project. Covers every endpoint in docs/api/openapi.json: health checks, order-history CSV upload, and the register/login/refresh/logout auth loop (see docs/design/uac-design.md §1). Run the Auth folder top-to-bottom once to populate the tokens the Users/logout requests need — see postman/README.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [

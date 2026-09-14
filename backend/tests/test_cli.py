@@ -522,7 +522,7 @@ def test_export_openapi_writes_valid_schema(tmp_path: Path) -> None:
 
     assert overwrote is False
     written = json.loads(output_path.read_text(encoding="utf-8"))
-    assert written["info"]["title"] == "Shopping Analysis API"
+    assert written["info"]["title"] == "Pantrycast API"
     assert "/auth/login" in written["paths"]
     assert "/users/me" in written["paths"]
 

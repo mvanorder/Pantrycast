@@ -5,24 +5,24 @@ services:
   db:
     build:
       context: ./database
-    image: shopping-analysis-db:local
+    image: pantrycast-db:local
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-shopping}
-      POSTGRES_DB: ${POSTGRES_DB:-shopping}
+      POSTGRES_USER: ${POSTGRES_USER:-pantrycast}
+      POSTGRES_DB: ${POSTGRES_DB:-pantrycast}
       PGDATA: /var/lib/postgresql/data/pgdata
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-shopping}", "-d", "${POSTGRES_DB:-shopping}"]
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-pantrycast}", "-d", "${POSTGRES_DB:-pantrycast}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
     networks:
-      - shopping-analysis
+      - pantrycast
 
   backend:
     build:
       context: ./backend
-    image: shopping-analysis-backend:local
+    image: pantrycast-backend:local
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: 5432
@@ -36,7 +36,7 @@ services:
       retries: 5
       start_period: 10s
     networks:
-      - shopping-analysis
+      - pantrycast
 
   # Wolfi-based Nginx: the frontend host and the reverse proxy in front of the
   # backend (proxy/Dockerfile, docs/design/uac-design.md §6/§7). The `static`
@@ -55,13 +55,13 @@ services:
         # to this proxy and through the reverse-proxy rules; override per
         # environment. Compose reads this from the shell env or the root .env.
         EXPO_PUBLIC_API_URL: ${EXPO_PUBLIC_API_URL:-}
-    image: shopping-analysis-proxy:local
+    image: pantrycast-proxy:local
     depends_on:
       backend:
         condition: service_healthy
     networks:
-      - shopping-analysis
+      - pantrycast
 
 networks:
-  shopping-analysis:
+  pantrycast:
     driver: bridge

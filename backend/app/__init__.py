@@ -1,1 +1,1 @@
-"""Shopping Analysis FastAPI backend package."""
+"""Pantrycast FastAPI backend package."""

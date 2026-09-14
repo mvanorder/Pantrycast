@@ -35,7 +35,7 @@ services:
     build:
       context: ./frontend
       target: dev
-    image: shopping-analysis-frontend:local
+    image: pantrycast-frontend:local
     environment:
       # Served through the proxy, so the web app talks to the proxy origin and
       # backend calls stay same-origin (no CORS). Metro advertises itself as
@@ -51,7 +51,7 @@ services:
     # otherwise `frontend` lands on compose's default network and the proxy
     # can't resolve it.
     networks:
-      - shopping-analysis
+      - pantrycast
     restart: "no"
 
   proxy:

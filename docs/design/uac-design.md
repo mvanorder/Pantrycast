@@ -435,7 +435,7 @@ file directly. Both paths build from the *same* Dockerfiles, which is the actual
 
 **Built**, as a base file + per-environment overlay rather than one monolithic file:
 `docker-compose.yml` defines the `db` and `backend` services (build context, healthchecks, the
-shared `shopping-analysis` network) and is never run alone; `docker-compose.dev.yml` /
+shared `pantrycast` network) and is never run alone; `docker-compose.dev.yml` /
 `docker-compose.staging.yml` / `docker-compose.prod.yml` layer environment-specific config on top
 via `-f`:
 

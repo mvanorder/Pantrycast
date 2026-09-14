@@ -1,4 +1,4 @@
-"""FastAPI application and route handlers for the Shopping Analysis backend."""
+"""FastAPI application and route handlers for the Pantrycast backend."""
 
 import csv
 import io
@@ -31,9 +31,9 @@ _TAGS_METADATA = [
 ]
 
 app = FastAPI(
-    title="Shopping Analysis API",
+    title="Pantrycast API",
     description=(
-        "Backend for the Shopping Analysis project: order-history ingestion and, "
+        "Backend for the Pantrycast project: order-history ingestion and, "
         "as of this pass, account registration/login. See `docs/design/` for the "
         "full system design; this schema is generated from the running app via "
         "`python -m app.cli export-openapi`."

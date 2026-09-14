@@ -21,7 +21,7 @@ const STEPS: Step[] = [
   {
     icon: 'chart-bar',
     title: '2. We detect your patterns',
-    body: 'Shopping Analysis tracks how often you rebuy the things you always need.',
+    body: 'Pantrycast tracks how often you rebuy the things you always need.',
   },
   {
     icon: 'clipboard-check-outline',

@@ -58,7 +58,7 @@ def test_database_url_percent_encodes_special_characters() -> None:
         postgres_password_file=None,
         postgres_host="localhost",
         postgres_port=5432,
-        postgres_db="shopping",
+        postgres_db="pantrycast",
     )
 
     url = settings.database_url.render_as_string(hide_password=False)

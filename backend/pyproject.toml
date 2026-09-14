@@ -1,7 +1,7 @@
 [project]
-name = "shopping-analysis"
+name = "pantrycast"
 version = "0.1.0"
-description = "FastAPI backend for Shopping Analysis"
+description = "FastAPI backend for Pantrycast"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi~=0.141.1",

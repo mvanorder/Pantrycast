@@ -50,7 +50,7 @@ export function DashboardHeader({ subtitle, period, onPeriodChange }: Props) {
           variant="labelSmall"
           accessibilityRole="header"
           style={[styles.eyebrow, { color: theme.colors.onHeader }]}>
-          SHOPPING ANALYSIS
+          PANTRYCAST
         </Text>
         <Text
           variant="headlineMedium"
