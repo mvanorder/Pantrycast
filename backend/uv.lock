@@ -958,6 +958,61 @@ wheels = [
 ]
 
 [[package]]
+name = "pantrycast"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "alembic" },
+    { name = "argon2-cffi" },
+    { name = "asyncpg" },
+    { name = "fastapi" },
+    { name = "pydantic", extra = ["email"] },
+    { name = "pydantic-settings" },
+    { name = "pyjwt", extra = ["crypto"] },
+    { name = "python-dotenv" },
+    { name = "python-multipart" },
+    { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "httpx2" },
+    { name = "mypy" },
+    { name = "pylint" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = "~=1.19.1" },
+    { name = "argon2-cffi", specifier = "~=23.1.0" },
+    { name = "asyncpg", specifier = "~=0.31.0" },
+    { name = "fastapi", specifier = "~=0.141.1" },
+    { name = "pydantic", extras = ["email"], specifier = ">=2.13.4" },
+    { name = "pydantic-settings", specifier = "~=2.15.0" },
+    { name = "pyjwt", extras = ["crypto"], specifier = "~=2.13.0" },
+    { name = "python-dotenv", specifier = "~=1.2.2" },
+    { name = "python-multipart", specifier = "~=0.0.32" },
+    { name = "sqlalchemy", extras = ["asyncio"], specifier = "~=2.0.52" },
+    { name = "uvicorn", extras = ["standard"], specifier = "~=0.52.3" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "httpx2", specifier = "~=2.12.0" },
+    { name = "mypy", specifier = ">=1.18,<3.0" },
+    { name = "pylint", specifier = "~=4.0" },
+    { name = "pytest", specifier = ">=8.4,<10.0" },
+    { name = "pytest-asyncio", specifier = "~=1.0" },
+    { name = "pytest-cov", specifier = "~=7.1.0" },
+    { name = "ruff", specifier = "~=0.14" },
+]
+
+[[package]]
 name = "pathspec"
 version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1273,61 +1328,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/20/656d67f5b25ca9bda4e02b1de25867b2954e1d19e03648060f167ad0f4cc/ruff-0.16.5-py3-none-win32.whl", hash = "sha256:288b0a5f080492fe5635db849f9e2e84aa3cce7b7f0e955997d416c507c76a26", size = 10034250, upload-time = "2026-08-27T16:34:11.8Z" },
     { url = "https://files.pythonhosted.org/packages/5b/42/ee8e68a207b9127fcde6c3d7e197def432f346cb1af159e1fa14ca0d1cdc/ruff-0.16.5-py3-none-win_amd64.whl", hash = "sha256:ddc6385fb2137f616357ca03d6c74f4be987f80fed4008566b754f6032b8546f", size = 10516714, upload-time = "2026-08-27T16:34:13.963Z" },
     { url = "https://files.pythonhosted.org/packages/73/e3/7df5a396e445b9ba49ce9a9437439a4d80042c61c0ade199abf8d16de1ac/ruff-0.16.5-py3-none-win_arm64.whl", hash = "sha256:a64abe90968719b851bb7cedffaa8753fbdbdadab483089682db623f3edc587e", size = 10391564, upload-time = "2026-08-27T16:34:16.064Z" },
-]
-
-[[package]]
-name = "shopping-analysis"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "alembic" },
-    { name = "argon2-cffi" },
-    { name = "asyncpg" },
-    { name = "fastapi" },
-    { name = "pydantic", extra = ["email"] },
-    { name = "pydantic-settings" },
-    { name = "pyjwt", extra = ["crypto"] },
-    { name = "python-dotenv" },
-    { name = "python-multipart" },
-    { name = "sqlalchemy", extra = ["asyncio"] },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "httpx2" },
-    { name = "mypy" },
-    { name = "pylint" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = "~=1.19.1" },
-    { name = "argon2-cffi", specifier = "~=23.1.0" },
-    { name = "asyncpg", specifier = "~=0.31.0" },
-    { name = "fastapi", specifier = "~=0.141.1" },
-    { name = "pydantic", extras = ["email"], specifier = ">=2.13.4" },
-    { name = "pydantic-settings", specifier = "~=2.15.0" },
-    { name = "pyjwt", extras = ["crypto"], specifier = "~=2.13.0" },
-    { name = "python-dotenv", specifier = "~=1.2.2" },
-    { name = "python-multipart", specifier = "~=0.0.32" },
-    { name = "sqlalchemy", extras = ["asyncio"], specifier = "~=2.0.52" },
-    { name = "uvicorn", extras = ["standard"], specifier = "~=0.52.3" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "httpx2", specifier = "~=2.12.0" },
-    { name = "mypy", specifier = ">=1.18,<3.0" },
-    { name = "pylint", specifier = "~=4.0" },
-    { name = "pytest", specifier = ">=8.4,<10.0" },
-    { name = "pytest-asyncio", specifier = "~=1.0" },
-    { name = "pytest-cov", specifier = "~=7.1.0" },
-    { name = "ruff", specifier = "~=0.14" },
 ]
 
 [[package]]

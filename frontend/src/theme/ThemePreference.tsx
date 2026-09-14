@@ -15,7 +15,7 @@ export type ThemeMode = 'system' | 'light' | 'dark';
 /** The scheme actually in effect once `'system'` is resolved. */
 export type ColorScheme = 'light' | 'dark';
 
-const STORAGE_KEY = 'shopping-analysis/theme-mode';
+const STORAGE_KEY = 'pantrycast/theme-mode';
 
 type ThemePreference = {
   mode: ThemeMode;

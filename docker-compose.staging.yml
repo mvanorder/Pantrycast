@@ -1,6 +1,6 @@
 # Staging: mirrors prod's secret handling and network isolation so it
 # actually catches deployment issues before they hit prod. No host port —
-# only reachable from other containers on the shopping-analysis network.
+# only reachable from other containers on the pantrycast network.
 #
 #   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
 services:

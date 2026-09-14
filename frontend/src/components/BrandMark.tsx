@@ -10,8 +10,8 @@ type BrandMarkProps = {
 
 /**
  * Logo lockup: a rounded-square cart glyph plus the wordmark. Treated as a
- * single image for assistive tech so it is announced once, as "Shopping
- * Analysis", rather than as a stray icon followed by text.
+ * single image for assistive tech so it is announced once, as "Pantrycast",
+ * rather than as a stray icon followed by text.
  */
 export function BrandMark({ showWordmark = true }: BrandMarkProps) {
   const theme = useAppTheme();
@@ -20,7 +20,7 @@ export function BrandMark({ showWordmark = true }: BrandMarkProps) {
     <View
       accessible
       accessibilityRole="image"
-      accessibilityLabel="Shopping Analysis"
+      accessibilityLabel="Pantrycast"
       style={styles.container}
     >
       <View
@@ -32,7 +32,7 @@ export function BrandMark({ showWordmark = true }: BrandMarkProps) {
       </View>
       {showWordmark ? (
         <Text variant="titleMedium" style={{ color: theme.colors.onSurface }}>
-          Shopping Analysis
+          Pantrycast
         </Text>
       ) : null}
     </View>

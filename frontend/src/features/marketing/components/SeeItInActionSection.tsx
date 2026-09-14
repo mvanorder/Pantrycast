@@ -52,14 +52,14 @@ export function SeeItInActionSection({ onGetStarted }: SeeItInActionSectionProps
               },
             ]}
           >
-            Once your history is in, your home screen shows exactly what Shopping
-            Analysis noticed — cadence, next-due dates, and a shopping list built
-            from your own habits, not guesswork.
+            Once your history is in, your home screen shows exactly what Pantrycast
+            noticed — cadence, next-due dates, and a shopping list built from your
+            own habits, not guesswork.
           </Text>
           <CtaButton
             label="Get started free"
             onPress={onGetStarted}
-            accessibilityLabel="Get started free with Shopping Analysis"
+            accessibilityLabel="Get started free with Pantrycast"
             style={[styles.cta, isCompact && styles.ctaStretched]}
           />
         </View>

@@ -78,8 +78,8 @@ class Settings(BaseSettings):
 
     postgres_host: str = "localhost"
     postgres_port: int = 5432
-    postgres_user: str = "shopping"
-    postgres_db: str = "shopping"
+    postgres_user: str = "pantrycast"
+    postgres_db: str = "pantrycast"
     postgres_password: SecretStr | None = None
     # Mirrors the db container's own POSTGRES_PASSWORD_FILE convention
     # (see database/Dockerfile) so the same Settings code works unchanged

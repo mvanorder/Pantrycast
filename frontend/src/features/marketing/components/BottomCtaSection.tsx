@@ -34,7 +34,7 @@ export function BottomCtaSection({ onGetStarted }: BottomCtaSectionProps) {
         label="Get started free"
         variant="onPrimary"
         onPress={onGetStarted}
-        accessibilityLabel="Get started free with Shopping Analysis"
+        accessibilityLabel="Get started free with Pantrycast"
         style={[styles.cta, isCompact && styles.ctaStretched]}
       />
     </Section>

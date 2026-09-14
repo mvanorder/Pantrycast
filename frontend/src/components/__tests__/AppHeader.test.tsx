@@ -74,7 +74,7 @@ describe('AppHeader', () => {
     setViewport(1280);
     await renderHeader();
 
-    await press('Log in to Shopping Analysis');
+    await press('Log in to Pantrycast');
 
     expect(mockRouterPush).toHaveBeenCalledWith('/login');
     expect(screen.queryByLabelText('Log out')).not.toBeOnTheScreen();
@@ -85,8 +85,8 @@ describe('AppHeader', () => {
     mockPathname = '/login';
     await renderHeader();
 
-    expect(screen.queryByLabelText('Log in to Shopping Analysis')).not.toBeOnTheScreen();
-    expect(screen.getByLabelText('Get started with Shopping Analysis')).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Log in to Pantrycast')).not.toBeOnTheScreen();
+    expect(screen.getByLabelText('Get started with Pantrycast')).toBeOnTheScreen();
   });
 
   it('routes the "Get started" action through the shared notice', async () => {
@@ -94,7 +94,7 @@ describe('AppHeader', () => {
     const onGetStarted = jest.fn();
     await renderHeader(onGetStarted);
 
-    await press('Get started with Shopping Analysis');
+    await press('Get started with Pantrycast');
 
     expect(onGetStarted).toHaveBeenCalledTimes(1);
   });
@@ -110,7 +110,7 @@ describe('AppHeader', () => {
 
     expect(screen.getByText('shopper@example.com')).toBeOnTheScreen();
     expect(screen.getByLabelText('Signed in as shopper@example.com')).toBeOnTheScreen();
-    expect(screen.queryByLabelText('Log in to Shopping Analysis')).not.toBeOnTheScreen();
+    expect(screen.queryByLabelText('Log in to Pantrycast')).not.toBeOnTheScreen();
 
     await press('Log out');
     expect(mockSignOut).toHaveBeenCalledTimes(1);

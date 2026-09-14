@@ -49,7 +49,7 @@ export function HeroSection({ onGetStarted, onSeeHowItWorks }: HeroSectionProps)
           },
         ]}
       >
-        Shopping Analysis reads your own order history and quietly learns how often
+        Pantrycast reads your own order history and quietly learns how often
         you rebuy the things you always need — so it can tell you what&apos;s coming
         next.
       </Text>
@@ -58,7 +58,7 @@ export function HeroSection({ onGetStarted, onSeeHowItWorks }: HeroSectionProps)
         <CtaButton
           label="Get started free"
           onPress={onGetStarted}
-          accessibilityLabel="Get started free with Shopping Analysis"
+          accessibilityLabel="Get started free with Pantrycast"
           style={isCompact ? styles.fullWidthAction : undefined}
         />
         <CtaButton

@@ -230,7 +230,7 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
 
           <View style={styles.footer}>
             <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-              New to Shopping Analysis?
+              New to Pantrycast?
             </Text>
             <Button
               mode="text"

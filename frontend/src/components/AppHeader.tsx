@@ -114,7 +114,7 @@ export function AppHeader() {
                   contentStyle={styles.logInContent}
                   labelStyle={styles.ctaLabel}
                   accessibilityRole="button"
-                  accessibilityLabel="Log in to Shopping Analysis"
+                  accessibilityLabel="Log in to Pantrycast"
                 >
                   Log in
                 </Button>
@@ -127,7 +127,7 @@ export function AppHeader() {
                 contentStyle={styles.ctaContent}
                 labelStyle={styles.ctaLabel}
                 accessibilityRole="button"
-                accessibilityLabel="Get started with Shopping Analysis"
+                accessibilityLabel="Get started with Pantrycast"
               >
                 Get started
               </Button>

@@ -23,12 +23,12 @@ describe('CtaButton', () => {
       <CtaButton
         label="Continue"
         onPress={jest.fn()}
-        accessibilityLabel="Get started free with Shopping Analysis"
+        accessibilityLabel="Get started free with Pantrycast"
       />,
     );
 
     expect(
-      screen.getByLabelText('Get started free with Shopping Analysis'),
+      screen.getByLabelText('Get started free with Pantrycast'),
     ).toBeOnTheScreen();
   });
 

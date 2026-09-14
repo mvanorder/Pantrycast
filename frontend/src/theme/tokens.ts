@@ -1,5 +1,5 @@
 /**
- * Design tokens for Shopping Analysis.
+ * Design tokens for Pantrycast.
  *
  * These are the single source of truth for brand colour, spacing, radii and
  * layout breakpoints. Screens should read them through the Paper theme

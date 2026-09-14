@@ -1,4 +1,4 @@
-# Shopping analysis
+# Pantrycast
 
 Analyzes personal shopping order history across retailers: ingest exported order data,
 normalize/categorize it, identify purchase trends, and project what's needed going forward.

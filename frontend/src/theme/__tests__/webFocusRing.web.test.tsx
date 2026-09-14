@@ -6,7 +6,7 @@ import { renderHook } from '@testing-library/react-native';
 
 import { useWebFocusRing } from '../webFocusRing';
 
-const STYLE_ID = 'shopping-analysis-focus-ring';
+const STYLE_ID = 'pantrycast-focus-ring';
 
 describe('useWebFocusRing on web', () => {
   const originalOS = Platform.OS;

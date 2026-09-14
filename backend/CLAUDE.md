@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working in `backend/`.
 
 ## Project overview
 
-FastAPI backend for the _Shopping Analysis_ project. It exposes
+FastAPI backend for the _Pantrycast_ project. It exposes
 HTTP endpoints for uploading/inspecting order data and persists to Postgres
 via SQLAlchemy's async engine, with Alembic managing schema migrations.
 

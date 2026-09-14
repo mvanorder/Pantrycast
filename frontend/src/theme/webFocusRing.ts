@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 
-const STYLE_ID = 'shopping-analysis-focus-ring';
+const STYLE_ID = 'pantrycast-focus-ring';
 
 /**
  * react-native-web renders touchables as `div`s with `outline: none` applied
