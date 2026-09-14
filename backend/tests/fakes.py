@@ -2,6 +2,8 @@ import uuid
 
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.mailer import EmailDeliveryError, OutgoingEmail
+
 
 class FakeAsyncSession:
     """A minimal stand-in for ``AsyncSession`` used to drive ``/health/db``.
@@ -187,3 +189,33 @@ class FakeSession:
     async def rollback(self) -> None:
         """Record that the transaction was rolled back."""
         self.rolled_back = True
+
+
+class FakeEmailSender:  # pylint: disable=too-few-public-methods
+    """An ``EmailSender`` that records messages instead of sending them.
+
+    :param raise_error: Whether :meth:`send` should raise
+        ``EmailDeliveryError`` to simulate a transport failure.
+    :type raise_error: bool
+    """
+
+    def __init__(self, raise_error: bool = False) -> None:
+        """Initialize the fake's recorded state and failure behavior.
+
+        :param raise_error: Whether :meth:`send` should raise
+            ``EmailDeliveryError``.
+        :type raise_error: bool
+        """
+        self._raise_error = raise_error
+        self.sent: list[OutgoingEmail] = []
+
+    async def send(self, message: OutgoingEmail) -> None:
+        """Record ``message``, or raise if configured to fail.
+
+        :param message: The email that would have been sent.
+        :type message: OutgoingEmail
+        :raises EmailDeliveryError: If configured via ``raise_error=True``.
+        """
+        if self._raise_error:
+            raise EmailDeliveryError("simulated email delivery failure")
+        self.sent.append(message)

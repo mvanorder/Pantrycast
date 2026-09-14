@@ -1,4 +1,8 @@
-"""ORM models for user accounts, login identities, and refresh tokens."""
+"""ORM models for user accounts, login identities, and refresh tokens.
+
+The related single-use email-verification / password-reset tokens live in
+``app/models/verification_token.py``; ``User`` back-populates them here.
+"""
 # pylint: disable=unsubscriptable-object
 # `Mapped[...]` (SQLAlchemy 2.0's typed ORM annotations) is a real generic at
 # runtime, but astroid's inference for it breaks down once pylint also has
@@ -7,6 +11,7 @@
 
 import uuid
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -22,6 +27,10 @@ from sqlalchemy.dialects.postgresql import CITEXT, INET, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import Base
+from app.models._mixins import HashedTokenColumns
+
+if TYPE_CHECKING:
+    from app.models.verification_token import VerificationToken
 
 
 class User(Base):  # pylint: disable=too-few-public-methods
@@ -62,6 +71,11 @@ class User(Base):  # pylint: disable=too-few-public-methods
     refresh_tokens: Mapped[list["RefreshToken"]] = relationship(
         back_populates="user", cascade="all, delete-orphan", passive_deletes=True
     )
+    # Defined in app/models/verification_token.py; imported by app.models's
+    # __init__ before mapper configuration, so the string reference resolves.
+    verification_tokens: Mapped[list["VerificationToken"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class AuthIdentity(Base):  # pylint: disable=too-few-public-methods
@@ -89,24 +103,15 @@ class AuthIdentity(Base):  # pylint: disable=too-few-public-methods
     user: Mapped["User"] = relationship(back_populates="auth_identities")
 
 
-class RefreshToken(Base):  # pylint: disable=too-few-public-methods
+class RefreshToken(HashedTokenColumns, Base):  # pylint: disable=too-few-public-methods
     """An opaque, hashed refresh token issued for one user session/device."""
 
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()")
-    )
-    user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
-    )
-    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    # id / user_id / token_hash / created_at come from HashedTokenColumns.
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     user_agent: Mapped[str | None] = mapped_column(Text)
     ip_address: Mapped[str | None] = mapped_column(INET)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("now()")
-    )
 
     user: Mapped["User"] = relationship(back_populates="refresh_tokens")

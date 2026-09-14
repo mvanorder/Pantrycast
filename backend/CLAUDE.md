@@ -20,13 +20,28 @@ via SQLAlchemy's async engine, with Alembic managing schema migrations.
   encode/decode (RS256), and refresh-token generate/hash helpers. Pure
   crypto/token logic, no FastAPI imports — shared by both the auth routes
   and `app/cli.py`'s `create-superuser`.
+- `app/tokens.py` — single-use email-verification / password-reset token
+  generate + SHA-256 hash (`VerificationPurpose` enum), same shape as
+  `security.py`'s refresh-token helpers. No FastAPI imports. The
+  `verification_tokens` table is `app/models/verification_token.py`; the
+  consuming `verify-email` / `password-reset` endpoints aren't built yet.
+- `app/mailer/` — outgoing transactional email (uac-design.md §1). The
+  `EmailSender` protocol plus an `aiosmtplib` SMTP sender (`smtp.py`) and a
+  console sender (`console.py`, logs instead of sending — the zero-setup
+  default when `SMTP_HOST` is unset). `__init__.py` has MIME building and the
+  message templates; `delivery.py` has the `BackgroundTasks`-ready send
+  helpers a route schedules; `factory.py` has `get_email_sender` (a
+  `Depends(...)` target, like `get_settings`). No FastAPI imports below
+  `factory.py`. Nothing sends yet — the flows that call it aren't built.
 - `app/schemas.py` — Pydantic request/response models for the auth/user API.
-- `app/config.py` — `Settings` (pydantic-settings) for Postgres connection
-  and JWT signing-key config, loaded from `backend/.env` (see `.env.example`)
-  or environment variables. The JWT keypair falls back to an ephemeral
-  in-process one if `JWT_PRIVATE_KEY[_FILE]`/`JWT_PUBLIC_KEY[_FILE]` are
-  unset — zero setup for local dev/tests, but logs a warning, since it's
+- `app/config.py` — `Settings` (pydantic-settings) for Postgres connection,
+  JWT signing-key, and SMTP/email config, loaded from `backend/.env` (see
+  `.env.example`) or environment variables. The JWT keypair falls back to an
+  ephemeral in-process one if `JWT_PRIVATE_KEY[_FILE]`/`JWT_PUBLIC_KEY[_FILE]`
+  are unset — zero setup for local dev/tests, but logs a warning, since it's
   unsafe for a real multi-replica deployment (see the property's docstring).
+  `SMTP_PASSWORD[_FILE]` uses the same secret + secret-file dual pattern as
+  `POSTGRES_PASSWORD`; with `SMTP_HOST` unset the app uses the console sender.
 - `app/db.py` — async engine/session setup (`get_engine`, `get_sessionmaker`,
   `get_db`) and the declarative `Base` for ORM models.
 - `alembic/`, `alembic.ini` — migrations; `alembic/env.py` builds the DB URL

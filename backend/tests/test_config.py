@@ -308,3 +308,142 @@ def test_refresh_token_ttl() -> None:
     settings = Settings(_env_file=None, jwt_refresh_token_ttl_days=7)
 
     assert settings.refresh_token_ttl == timedelta(days=7)
+
+
+def test_smtp_password_value_from_plain_setting() -> None:
+    """Verify ``smtp_password_value`` returns the plain ``smtp_password`` secret."""
+    settings = Settings(
+        _env_file=None, smtp_user="mailer", smtp_password="hunter2", smtp_password_file=None
+    )
+
+    assert settings.smtp_password_value == "hunter2"
+
+
+def test_smtp_password_value_from_file(tmp_path: Path) -> None:
+    """Verify ``smtp_password_value`` reads and strips a configured password file.
+
+    :param tmp_path: Pytest-provided temporary directory.
+    :type tmp_path: Path
+    """
+    password_file = tmp_path / "smtp-password"
+    password_file.write_text("filepw\n")
+    settings = Settings(
+        _env_file=None, smtp_user="mailer", smtp_password=None, smtp_password_file=str(password_file)
+    )
+
+    assert settings.smtp_password_value == "filepw"
+
+
+def test_smtp_password_value_unset_is_none() -> None:
+    """Verify an unauthenticated relay (no password configured) yields ``None``."""
+    settings = Settings(_env_file=None, smtp_password=None, smtp_password_file=None)
+
+    assert settings.smtp_password_value is None
+
+
+def test_email_config_rejects_both_password_sources() -> None:
+    """Verify setting both ``SMTP_PASSWORD`` and ``SMTP_PASSWORD_FILE`` is a validation error."""
+    with pytest.raises(ValidationError, match="not both"):
+        Settings(_env_file=None, smtp_password="pw", smtp_password_file="/some/path")
+
+
+def test_email_config_rejects_forced_smtp_without_a_host() -> None:
+    """Verify ``EMAIL_BACKEND=smtp`` without ``SMTP_HOST`` is a validation error."""
+    with pytest.raises(ValidationError, match="requires SMTP_HOST"):
+        Settings(_env_file=None, email_backend="smtp", smtp_host=None)
+
+
+def test_email_config_treats_blank_smtp_host_as_unset() -> None:
+    """Verify ``SMTP_HOST=`` (blank, as shipped in .env templates) reads as unset."""
+    settings = Settings(_env_file=None, smtp_host="   ")
+
+    assert settings.smtp_host is None
+
+    with pytest.raises(ValidationError, match="requires SMTP_HOST"):
+        Settings(_env_file=None, email_backend="smtp", smtp_host="")
+
+
+def test_email_config_rejects_half_configured_smtp_auth() -> None:
+    """Verify a username without a password (or vice versa) is a validation error."""
+    with pytest.raises(ValidationError, match="SMTP_USER"):
+        Settings(_env_file=None, smtp_host="smtp.example.com", smtp_user="mailer")
+    with pytest.raises(ValidationError, match="SMTP_USER"):
+        Settings(_env_file=None, smtp_host="smtp.example.com", smtp_password="pw")
+
+
+def test_email_config_ignores_stray_smtp_user_when_smtp_is_not_in_use() -> None:
+    """Verify a leftover SMTP_USER with no host isn't a boot failure (mail won't go over SMTP)."""
+    settings = Settings(_env_file=None, smtp_host=None, smtp_user="mailer")
+
+    assert settings.smtp_host is None
+
+
+def test_email_config_rejects_plaintext_to_a_remote_smtp_host() -> None:
+    """Verify plaintext SMTP to a non-local host is refused (token would cross the wire clear)."""
+    with pytest.raises(ValidationError, match="unencrypted"):
+        Settings(_env_file=None, smtp_host="smtp.example.com", smtp_security="plaintext")
+
+
+def test_email_config_allows_plaintext_to_a_local_relay() -> None:
+    """Verify plaintext SMTP to a local dev catcher (Mailpit), with no credentials, is fine."""
+    settings = Settings(_env_file=None, smtp_host="mailpit", smtp_security="plaintext")
+
+    assert settings.smtp_host == "mailpit"
+
+
+def test_email_config_rejects_plaintext_with_credentials_even_to_a_local_relay() -> None:
+    """Verify authenticating over plaintext is refused even for a local host."""
+    with pytest.raises(ValidationError, match="in the clear"):
+        Settings(
+            _env_file=None,
+            smtp_host="localhost",
+            smtp_user="mailer",
+            smtp_password="pw",
+            smtp_security="plaintext",
+        )
+
+
+def test_email_config_rejects_missing_smtp_password_file() -> None:
+    """Verify a nonexistent ``SMTP_PASSWORD_FILE`` fails at settings validation, not first send."""
+    with pytest.raises(ValidationError, match="Could not read SMTP_PASSWORD_FILE"):
+        Settings(
+            _env_file=None,
+            smtp_host="smtp.example.com",
+            smtp_user="mailer",
+            smtp_password_file="C:/nonexistent/smtp/path",
+        )
+
+
+def test_email_config_rejects_a_from_address_without_an_at_sign() -> None:
+    """Verify a malformed ``EMAIL_FROM`` fails at startup, not as a swallowed send error."""
+    with pytest.raises(ValidationError, match="EMAIL_FROM"):
+        Settings(_env_file=None, email_from="Shopping Analysis")
+
+
+def test_email_config_rejects_a_non_http_base_url() -> None:
+    """Verify a scheme-less ``EMAIL_BASE_URL`` (broken links) fails at startup."""
+    with pytest.raises(ValidationError, match="EMAIL_BASE_URL"):
+        Settings(_env_file=None, email_base_url="app.example.com")
+
+
+def test_verification_token_ttl_hours_must_be_positive() -> None:
+    """Verify a zero/negative TTL is rejected rather than minting already-expired tokens."""
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, verification_token_ttl_hours=0)
+
+
+def test_verification_token_ttl() -> None:
+    """Verify ``verification_token_ttl`` converts the configured hours to a ``timedelta``."""
+    settings = Settings(_env_file=None, verification_token_ttl_hours=6)
+
+    assert settings.verification_token_ttl == timedelta(hours=6)
+
+
+def test_email_defaults() -> None:
+    """Verify the email settings default to the zero-setup console-sender configuration."""
+    settings = Settings(_env_file=None)
+
+    assert settings.smtp_host is None
+    assert settings.email_backend == "auto"
+    assert settings.email_base_url == "http://localhost:8080"
+    assert "no-reply@localhost" in settings.email_from

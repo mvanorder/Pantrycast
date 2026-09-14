@@ -25,8 +25,10 @@ services:
       - .env.staging
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
     secrets:
       - postgres_password
+      - smtp_password
     ports:
       - "8000:8000"
     restart: unless-stopped
@@ -58,6 +60,8 @@ services:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password_staging.txt
+  smtp_password:
+    file: ./secrets/smtp_password_staging.txt
 
 volumes:
   db-data-staging:

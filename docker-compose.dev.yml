@@ -64,5 +64,19 @@ services:
       - "8080:8080"
     restart: "no"
 
+  # Optional local SMTP catcher for testing the email flows (uac-design.md §1).
+  # Off by default — the backend logs emails instead of sending when SMTP_HOST
+  # is unset. To use it: uncomment this service, add SMTP_HOST=mailpit /
+  # SMTP_PORT=1025 / SMTP_SECURITY=plaintext to .env.dev, and open the web
+  # inbox at http://localhost:8025.
+  # mailpit:
+  #   image: axllent/mailpit:latest
+  #   ports:
+  #     - "1025:1025"
+  #     - "8025:8025"
+  #   networks:
+  #     - shopping-analysis
+  #   restart: "no"
+
 volumes:
   db-data-dev:

@@ -3,6 +3,7 @@ from app.db import Base
 from app.models.audit import AuditLog
 from app.models.rbac import Permission, Role, RolePermission, UserRole
 from app.models.user import AuthIdentity, RefreshToken, User
+from app.models.verification_token import VerificationToken
 
 
 def test_all_uac_tables_registered_on_base_metadata() -> None:
@@ -13,6 +14,7 @@ def test_all_uac_tables_registered_on_base_metadata() -> None:
         "users",
         "auth_identities",
         "refresh_tokens",
+        "verification_tokens",
         "roles",
         "permissions",
         "role_permissions",
@@ -60,6 +62,32 @@ def test_refresh_tokens_cascades_and_unique_hash() -> None:
     assert fk.column.table.name == "users"
     assert fk.ondelete == "CASCADE"
     assert table.c.token_hash.unique
+
+
+def test_verification_tokens_table_shape() -> None:
+    """Verify ``verification_tokens`` cascades on user delete, hashes are unique, purpose is checked."""
+    table = VerificationToken.__table__
+    fk = next(iter(table.c.user_id.foreign_keys))
+
+    assert table.primary_key.columns.keys() == ["id"]
+    assert fk.column.table.name == "users"
+    assert fk.ondelete == "CASCADE"
+    assert table.c.token_hash.unique
+    assert table.c.purpose.nullable is False
+    assert table.c.expires_at.nullable is False
+    assert table.c.consumed_at.nullable is True
+    check_names = [
+        ck.name for ck in table.constraints if ck.__class__.__name__ == "CheckConstraint"
+    ]
+    assert "ck_verification_tokens_purpose_valid" in check_names
+
+
+def test_user_backpopulates_verification_tokens() -> None:
+    """Verify ``User.verification_tokens`` is wired as a cascade-delete relationship."""
+    rel = User.__mapper__.relationships["verification_tokens"]
+
+    assert rel.mapper.class_ is VerificationToken
+    assert "delete-orphan" in rel.cascade
 
 
 def test_rbac_join_tables_have_composite_primary_keys() -> None:

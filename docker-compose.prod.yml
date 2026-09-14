@@ -33,8 +33,10 @@ services:
       - .env.prod
     environment:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
     secrets:
       - postgres_password
+      - smtp_password
     ports:
       - "8000:8000"
     restart: always
@@ -72,6 +74,8 @@ services:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password_prod.txt
+  smtp_password:
+    file: ./secrets/smtp_password_prod.txt
 
 volumes:
   db-data-prod:
