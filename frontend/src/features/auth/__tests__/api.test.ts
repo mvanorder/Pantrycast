@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../api/client';
-import { fetchCurrentUser, login, logout } from '../api';
+import { fetchCurrentUser, login, logout, register } from '../api';
 
 jest.mock('../../../api/client', () => ({ apiRequest: jest.fn() }));
 
@@ -34,6 +34,38 @@ describe('login', () => {
     mockApiRequest.mockRejectedValue(new Error('boom'));
 
     await expect(login({ email: 'x@y.co', password: 'bad' })).rejects.toThrow('boom');
+  });
+});
+
+describe('register', () => {
+  it('POSTs the account details to /auth/register, omitting a blank display name', async () => {
+    mockApiRequest.mockResolvedValue({ id: '1', email: 'shopper@example.com', display_name: null });
+
+    await register({ email: 'shopper@example.com', password: 'password123' });
+
+    expect(mockApiRequest).toHaveBeenCalledWith('/auth/register', {
+      method: 'POST',
+      body: { email: 'shopper@example.com', password: 'password123' },
+    });
+  });
+
+  it('includes display_name when a display name is given', async () => {
+    mockApiRequest.mockResolvedValue({ id: '1', email: 'shopper@example.com', display_name: 'Sam' });
+
+    await register({ email: 'shopper@example.com', password: 'password123', displayName: 'Sam' });
+
+    expect(mockApiRequest).toHaveBeenCalledWith('/auth/register', {
+      method: 'POST',
+      body: { email: 'shopper@example.com', password: 'password123', display_name: 'Sam' },
+    });
+  });
+
+  it('propagates a rejected request (e.g. email already registered)', async () => {
+    mockApiRequest.mockRejectedValue(new Error('boom'));
+
+    await expect(
+      register({ email: 'taken@example.com', password: 'password123' }),
+    ).rejects.toThrow('boom');
   });
 });
 

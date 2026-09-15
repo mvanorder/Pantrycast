@@ -2,7 +2,15 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 
 import { ApiError } from '../../../api/client';
 import { AuthProvider, useAuth } from '../AuthContext';
-import { fetchCurrentUser, login, logout, type TokenPair, type UserProfile } from '../api';
+import {
+  fetchCurrentUser,
+  login,
+  logout,
+  register,
+  type NewAccount,
+  type TokenPair,
+  type UserProfile,
+} from '../api';
 import {
   clearTokenPair,
   getAccessToken,
@@ -14,6 +22,7 @@ jest.mock('../api', () => ({
   login: jest.fn(),
   fetchCurrentUser: jest.fn(),
   logout: jest.fn(),
+  register: jest.fn(),
 }));
 
 jest.mock('../tokenStorage', () => ({
@@ -26,6 +35,7 @@ jest.mock('../tokenStorage', () => ({
 const mockLogin = login as jest.MockedFunction<typeof login>;
 const mockFetchCurrentUser = fetchCurrentUser as jest.MockedFunction<typeof fetchCurrentUser>;
 const mockLogout = logout as jest.MockedFunction<typeof logout>;
+const mockRegister = register as jest.MockedFunction<typeof register>;
 const mockGetAccessToken = getAccessToken as jest.MockedFunction<typeof getAccessToken>;
 const mockGetRefreshToken = getRefreshToken as jest.MockedFunction<typeof getRefreshToken>;
 const mockStoreTokenPair = storeTokenPair as jest.MockedFunction<typeof storeTokenPair>;
@@ -133,6 +143,57 @@ describe('signIn', () => {
     ).rejects.toThrow('Invalid email or password');
 
     expect(mockStoreTokenPair).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('unauthenticated');
+  });
+});
+
+describe('signUp', () => {
+  const newAccount: NewAccount = {
+    id: '00000000-0000-0000-0000-000000000002',
+    email: 'shopper@example.com',
+    display_name: 'Sam Shopper',
+  };
+
+  it('registers then signs in, becoming authenticated', async () => {
+    mockRegister.mockResolvedValue(newAccount);
+    mockLogin.mockResolvedValue(tokenPair);
+    mockFetchCurrentUser.mockResolvedValue(profile);
+
+    const { result } = await mountAuth();
+
+    await act(async () => {
+      await result.current.signUp({
+        email: 'shopper@example.com',
+        password: 's3cret-pass',
+        displayName: 'Sam Shopper',
+      });
+    });
+
+    expect(mockRegister).toHaveBeenCalledWith({
+      email: 'shopper@example.com',
+      password: 's3cret-pass',
+      displayName: 'Sam Shopper',
+    });
+    expect(mockLogin).toHaveBeenCalledWith({
+      email: 'shopper@example.com',
+      password: 's3cret-pass',
+    });
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.user).toEqual(profile);
+  });
+
+  it('propagates a registration failure (e.g. email already taken) without signing in', async () => {
+    mockRegister.mockRejectedValue(new ApiError(400, 'Email already registered'));
+
+    const { result } = await mountAuth();
+
+    await expect(
+      act(async () => {
+        await result.current.signUp({ email: 'taken@example.com', password: 's3cret-pass' });
+      }),
+    ).rejects.toThrow('Email already registered');
+
+    expect(mockLogin).not.toHaveBeenCalled();
     expect(result.current.status).toBe('unauthenticated');
   });
 });

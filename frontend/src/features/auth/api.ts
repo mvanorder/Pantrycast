@@ -35,6 +35,36 @@ export function login(credentials: { email: string; password: string }): Promise
   });
 }
 
+/** A newly created account, from `POST /auth/register`. */
+export type NewAccount = {
+  id: string;
+  email: string;
+  display_name: string | null;
+};
+
+/**
+ * Creates a new account. Does not sign the caller in — `POST /auth/register`
+ * returns no token pair, so a caller that wants a session must follow up
+ * with {@link login}.
+ *
+ * Rejects with {@link ApiError}: `status` 400 if the email is already
+ * registered, `status` 0 if the server was unreachable.
+ */
+export function register(details: {
+  email: string;
+  password: string;
+  displayName?: string;
+}): Promise<NewAccount> {
+  return apiRequest<NewAccount>('/auth/register', {
+    method: 'POST',
+    body: {
+      email: details.email,
+      password: details.password,
+      ...(details.displayName ? { display_name: details.displayName } : {}),
+    },
+  });
+}
+
 /**
  * Fetches the signed-in user's profile. Rejects with {@link ApiError} `status`
  * 401 if the access token is missing, expired, or invalid.

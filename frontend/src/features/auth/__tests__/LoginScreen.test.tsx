@@ -220,11 +220,11 @@ describe('LoginScreen', () => {
     expect(screen.getByLabelText('Hide password')).toBeOnTheScreen();
   });
 
-  it('sends a would-be signer-upper back to the landing page', async () => {
+  it('sends a would-be signer-upper to the signup screen', async () => {
     await renderWithProviders(<LoginScreen />);
 
     await press('Get started');
 
-    expect(mockRouterReplace).toHaveBeenCalledWith('/');
+    expect(mockRouterReplace).toHaveBeenCalledWith('/signup');
   });
 });
