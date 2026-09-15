@@ -85,6 +85,12 @@ class Settings(BaseSettings):
     # (see database/Dockerfile) so the same Settings code works unchanged
     # once the backend is containerized for staging/prod.
     postgres_password_file: str | None = None
+    # Set on Cloud Run to reach Cloud SQL over the Auth Proxy's Unix socket
+    # (mounted at /cloudsql/<connection-name>, e.g.
+    # "my-project:us-central1:my-instance") instead of postgres_host/port.
+    # Leaving this unset preserves the existing TCP behavior for
+    # local/docker-compose. See the database_url property below.
+    cloud_sql_connection_name: str | None = None
 
     # Same SETTING/SETTING_FILE dual pattern as postgres_password, applied to
     # the RS256 keypair used to sign/verify access tokens (uac-design.md §1).
@@ -120,6 +126,31 @@ class Settings(BaseSettings):
                 "JWT_PUBLIC_KEY[_FILE]), or neither to use an ephemeral dev/test keypair — "
                 "configuring only one would silently verify tokens against an unrelated key."
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_cloud_sql_connection_name(self) -> "Settings":
+        """Reject a malformed ``cloud_sql_connection_name`` rather than failing at connect time.
+
+        The Cloud SQL Auth Proxy's socket directory is named
+        ``<project>:<region>:<instance>``. Catching a typo'd value here
+        surfaces a clear startup error instead of an opaque "socket not
+        found" failure from asyncpg on first database access.
+
+        :raises ValueError: If set but not exactly three colon-separated
+            non-empty parts.
+        :returns: ``self``, unchanged, once validated.
+        :rtype: Settings
+        """
+        name = self.cloud_sql_connection_name
+        if name:
+            parts = name.split(":")
+            if len(parts) != 3 or not all(parts):
+                raise ValueError(
+                    "CLOUD_SQL_CONNECTION_NAME must look like "
+                    "'<project>:<region>:<instance>' (Cloud SQL's own connection-name format), "
+                    f"got: {name!r}"
+                )
         return self
 
     @property
@@ -198,9 +229,32 @@ class Settings(BaseSettings):
         so special characters (e.g. "@" or ":" in a password) don't get
         misparsed as URL syntax.
 
+        If ``cloud_sql_connection_name`` is set, connects over the Cloud SQL
+        Auth Proxy's Unix socket (``/cloudsql/<connection-name>``, mounted
+        into the container by Cloud Run) instead of TCP — asyncpg takes the
+        socket directory via a ``host`` query param rather than the URL's
+        host/port fields. ``postgres_host``/``postgres_port`` are ignored in
+        that case (the socket path fully determines the target instance).
+
         :returns: The async Postgres connection URL.
         :rtype: URL
         """
+        if self.cloud_sql_connection_name:
+            if self.postgres_host != "localhost" or self.postgres_port != 5432:
+                logger.warning(
+                    "POSTGRES_HOST/POSTGRES_PORT (%s:%s) are ignored because "
+                    "CLOUD_SQL_CONNECTION_NAME is set — the Cloud SQL Auth Proxy "
+                    "socket doesn't use them.",
+                    self.postgres_host,
+                    self.postgres_port,
+                )
+            return URL.create(
+                drivername="postgresql+asyncpg",
+                username=self.postgres_user,
+                password=self._db_password,
+                database=self.postgres_db,
+                query={"host": f"/cloudsql/{self.cloud_sql_connection_name}"},
+            )
         return URL.create(
             drivername="postgresql+asyncpg",
             username=self.postgres_user,

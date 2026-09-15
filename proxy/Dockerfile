@@ -58,6 +58,17 @@ COPY frontend/ ./
 # to dist/.
 RUN npx expo export --platform web --output-dir dist
 
+# ---- backend-proxy config templating --------------------------------------
+# Bakes BACKEND_UPSTREAM_HOST into proxy_backend.conf at build time — see the
+# template's own comment for why this can't happen at container start.
+# Reuses the node "-dev" base (same shell-availability rationale as
+# web-build above) purely to run `sed`.
+FROM cgr.dev/chainguard/node:latest-dev AS proxy-conf
+ARG BACKEND_UPSTREAM_HOST=backend
+WORKDIR /conf
+COPY proxy/snippets/proxy_backend.conf.template ./proxy_backend.conf
+RUN sed -i "s/__BACKEND_UPSTREAM_HOST__/${BACKEND_UPSTREAM_HOST}/" proxy_backend.conf
+
 # ---- shared nginx base ---------------------------------------------------
 FROM cgr.dev/chainguard/nginx:latest AS base
 
@@ -71,8 +82,11 @@ FROM cgr.dev/chainguard/nginx:latest AS base
 #
 # The shared proxy directives are pulled in with an explicit `include`, so
 # they must NOT sit in conf.d/ (glob-loaded as *.conf) — they live in
-# snippets/.
-COPY proxy/snippets/ /etc/nginx/snippets/
+# snippets/. proxy_backend.conf comes from the templating stage above rather
+# than straight off disk (see that stage's comment); everything else in
+# snippets/ is copied as-is.
+COPY proxy/snippets/backend_routes.conf /etc/nginx/snippets/backend_routes.conf
+COPY --from=proxy-conf /conf/proxy_backend.conf /etc/nginx/snippets/proxy_backend.conf
 
 EXPOSE 8080
 
