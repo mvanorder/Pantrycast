@@ -7,9 +7,11 @@ built. `orders`/`order_items` are deliberately excluded pending plan refinement 
 `create-superuser` bootstrap CLI (§2) is built, including argon2 password hashing. The core
 password-auth HTTP loop is also now built and verified end-to-end against a real Postgres instance:
 `register`/`login`/`refresh`/`logout`/`logout-all`, JWT issuance/verification, and the
-`get_current_user` dependency (§1 "Authentication endpoints"). Still design-only: RBAC enforcement
-(§3), the Google OAuth flow (§4), and email verification/password reset (both need an email sender
-that doesn't exist yet).
+`get_current_user` dependency (§1 "Authentication endpoints"). On the frontend, login/session
+restore/route-guarding are built (§1 "Frontend integration"); signup, account management, and
+silent token refresh on 401 are not. Still design-only: RBAC enforcement (§3), the Google OAuth
+flow (§4), and email verification/password reset (both need an email sender that doesn't exist
+yet).
 Scope: user accounts, authentication, authorization (RBAC), and the container/deployment
 architecture needed to run this at anywhere from single-user to millions-of-users scale.
 
@@ -48,10 +50,9 @@ models matching this shape, with a few concrete choices the design above left op
   'google'))` in addition to whatever the app layer enforces, so an invalid provider value can't
   reach the table even from a bug or a manual `INSERT`.
 - `refresh_tokens.ip_address` is a Postgres `INET` column rather than plain text.
-- Argon2 password hashing exists (`backend/app/cli.py`), but only the `create-superuser`
-  bootstrap path (§2) uses it — there's no login endpoint that verifies a password yet. JWT
-  issuance and the Google OAuth flow itself are not implemented — only the schema these depend
-  on exists so far.
+- Argon2 password hashing and JWT issuance/verification are both implemented and used by the
+  `create-superuser` bootstrap path (§2) *and* the `register`/`login`/`refresh` HTTP endpoints
+  (§1 "Authentication endpoints") — only the Google OAuth flow (§4) remains schema-only.
 - The `roles`/`permissions`/`role_permissions`/`user_roles` (§3) and `audit_log` (§5) tables are
   also now built as models (`app/models/rbac.py`, `app/models/audit.py`) — see §5 for the
   specifics. `orders`/`order_items` are not built yet, pending plan refinement (§5). RBAC
@@ -103,9 +104,13 @@ below for which is which. This is separate from the `create-superuser` CLI (§2)
 not a cookie — because Expo Router (`frontend/`) ships the same codebase to native iOS/Android and
 web, and a header is the one mechanism that works identically across all three without a
 web-only/native-only branch in the HTTP client. The refresh token is returned once, in the
-`POST /auth/login` response body, and the client is responsible for storing it (Expo
-`SecureStore` on native; **web storage is an open question below** — `localStorage` is readable by
-any injected script, so it carries real XSS exposure that native's SecureStore doesn't).
+`POST /auth/login` response body, and the client is responsible for storing it. The design intent
+was Expo `SecureStore` on native, with **web storage as an open question** — `localStorage` is
+readable by any injected script, so it carries real XSS exposure that SecureStore doesn't. What's
+actually built (`frontend/src/features/auth/tokenStorage.ts`) stores both tokens in
+`@react-native-async-storage/async-storage` on *every* platform, including native — a deliberate
+placeholder per the file's own comment, not yet the SecureStore split described above. See
+"Frontend integration" below.
 
 **Endpoints:**
 
@@ -144,9 +149,10 @@ verification any protected route needs:
 
 **Error contract**, so the frontend can branch on it without parsing prose:
 
-- **401** — missing, malformed, expired, or signature-invalid access token. The frontend's
+- **401** — missing, malformed, expired, or signature-invalid access token. The intended frontend
   response is always the same regardless of *which* of those it was: silently attempt
-  `POST /auth/refresh`, and only surface a login prompt if that also fails.
+  `POST /auth/refresh`, and only surface a login prompt if that also fails. **Not built yet** — see
+  "Frontend integration" below; today a 401 just signs the user out.
 - **403** — the token is valid but `require_permission` says no (§3's "can this role do this" or
   the ownership check both land here). The frontend should *not* retry or refresh on 403 — retrying
   a refresh won't fix an authorization gap. **Not reachable yet** — nothing returns 403 until §3's
@@ -168,6 +174,31 @@ limbo. The one gate that *is* enforced is `is_active` (→ `disabled`), checked 
 `_authenticate_password` (`backend/app/routers/auth.py`). No new column was added for this —
 `users.is_active`/`email_verified` (already migrated, §5) are enough to approximate the state
 machine until the verification flow exists to justify a dedicated state column.
+
+### Frontend integration
+
+**Built** (`frontend/src/features/auth/`, `frontend/src/app/login.tsx`,
+`frontend/src/app/dashboard.tsx`, `frontend/src/app/_layout.tsx`):
+
+- `frontend/src/api/client.ts` / `frontend/src/api/config.ts` — a thin `fetch`-based JSON client
+  (`apiRequest<T>()`), base URL from `EXPO_PUBLIC_API_URL`.
+- `frontend/src/features/auth/api.ts` — `login()` → `POST /auth/login`, `fetchCurrentUser()` →
+  `GET /users/me`, `logout()` → `POST /auth/logout`.
+- `frontend/src/features/auth/AuthContext.tsx` — `AuthProvider`/`useAuth()`, tracking
+  `status: 'loading' | 'authenticated' | 'unauthenticated'`. Restores the session on app start from
+  a stored access token via `fetchCurrentUser`; mounted around the whole app in `_layout.tsx`.
+- `frontend/src/app/login.tsx` (route `/login`) and route-guarding on
+  `frontend/src/app/dashboard.tsx`, which redirects unauthenticated visitors to `/`.
+- Token storage: see the correction under "Transport" above — actual storage is
+  `AsyncStorage` on every platform today, not the SecureStore/web-TBD split originally designed.
+
+**Known gaps**, called out explicitly so they don't read as accidental omissions:
+
+- No signup/registration screen exists, even though `POST /auth/register` is built server-side —
+  there is currently no way to create an account through the app itself.
+- No account/profile/settings screen exists.
+- No silent-refresh-on-401 flow (see the 401 bullet under "Error contract" above) — a
+  rejected/expired stored access token just forces sign-out today.
 
 ---
 

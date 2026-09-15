@@ -14,16 +14,24 @@ normalization, analysis, and projection are not implemented — see [`README.md`
 
 - **`backend/`** — FastAPI service backed by Postgres via SQLAlchemy's async engine, with
   Alembic managing schema migrations. Endpoints so far: `GET /health`, `GET /health/db`,
-  and `POST /orders/upload` (parses an uploaded order-history CSV and echoes its columns
-  and rows; nothing is persisted yet). SQLAlchemy models and a migration for the
-  user/auth/RBAC/audit schema exist but are unused — no password hashing, JWT, RBAC
-  enforcement, or OAuth. See [`backend/CLAUDE.md`](backend/CLAUDE.md) for conventions
-  (including the strict docstring rules) and commands.
+  `POST /orders/upload` (parses an uploaded order-history CSV and echoes its columns
+  and rows; nothing is persisted yet), and a password-based auth API (`register`, `login`,
+  `refresh`, `logout`, `logout-all`, `GET /users/me`) with argon2 password hashing and
+  JWT access/refresh tokens. RBAC and audit-log tables exist as models/migrations but
+  have no enforcement or write path yet, and Google OAuth is design-only. See
+  [`backend/CLAUDE.md`](backend/CLAUDE.md) for conventions (including the strict
+  docstring rules) and commands, and
+  [`docs/design/uac-design.md`](docs/design/uac-design.md) for the full auth/RBAC design
+  and built-vs-not-built status.
 - **`frontend/`** — Expo (React Native + TypeScript) app using Expo Router for file-based
   navigation (`src/app/`), so one codebase runs as native iOS/Android and as a web build.
-  Still essentially a `create-expo-app` scaffold: `src/app/_layout.tsx` is a bare `Stack`
-  and `src/app/index.tsx` is the placeholder screen — no tabs, no `explore.tsx`, no HTTP
-  client wired to the backend. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md) /
+  Past the initial scaffold: `src/app/index.tsx` is a marketing landing page,
+  `src/app/login.tsx` is a working login screen wired to the backend (`src/api/`, a
+  `fetch`-based client), and `src/app/dashboard.tsx` is a route-guarded screen behind an
+  `AuthContext` session provider. Still missing: a signup/registration screen, an
+  account/settings screen, and silent token refresh on 401 — see
+  [`docs/design/uac-design.md`](docs/design/uac-design.md) §1 "Frontend integration" for
+  the current gaps. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md) /
   [`frontend/AGENTS.md`](frontend/AGENTS.md): Expo's API has changed since training
   cutoffs — check the versioned docs (`https://docs.expo.dev/versions/v57.0.0/`) before
   relying on remembered Expo APIs.
