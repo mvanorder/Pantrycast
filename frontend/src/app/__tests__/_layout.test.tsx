@@ -1,4 +1,5 @@
 import { render, waitFor } from '@testing-library/react-native';
+import type { ReactNode } from 'react';
 import * as ReactNative from 'react-native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
@@ -11,6 +12,9 @@ import RootLayout from '../_layout';
 // temporal dead zone when the factory runs.
 jest.mock('expo-router', () => ({
   Stack: jest.fn(() => null),
+  // Passthrough - the root layout wraps the Stack in this to override
+  // React Navigation's default (light-only) background theme.
+  ThemeProvider: ({ children }: { children: ReactNode }) => children,
   // AppShell's global header (rendered around the Stack) reads `useRouter` and
   // `usePathname`.
   useRouter: () => ({ push: jest.fn(), replace: jest.fn() }),

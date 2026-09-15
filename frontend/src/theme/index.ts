@@ -1,6 +1,12 @@
 export { heading } from './a11y';
 export { appFontConfig, appFonts, displayFont } from './fonts';
-export { darkTheme, lightTheme, useAppTheme } from './theme';
+export {
+  darkTheme,
+  lightTheme,
+  navigationDarkTheme,
+  navigationLightTheme,
+  useAppTheme,
+} from './theme';
 export type { AppTheme } from './theme';
 export { ThemePreferenceProvider, useThemePreference } from './ThemePreference';
 export type { ColorScheme, ThemeMode } from './ThemePreference';

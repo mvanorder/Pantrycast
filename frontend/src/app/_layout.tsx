@@ -1,5 +1,5 @@
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, ThemeProvider as NavigationThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -13,6 +13,8 @@ import {
   appFonts,
   darkTheme,
   lightTheme,
+  navigationDarkTheme,
+  navigationLightTheme,
   ThemePreferenceProvider,
   useThemePreference,
   useWebFocusRing,
@@ -56,20 +58,27 @@ function ThemedApp({ fontsSettled }: { fontsSettled: boolean }) {
       {/* The global top bar and footer live in AppShell, so they stay put
           across navigation and every route renders between them. */}
       <AppShell>
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.colors.background },
-          }}>
-          <Stack.Screen name="index" />
-          {/* Dashboard draws its own brand header, so the native header is off.
-              Future drill-downs (item history, full shopping list) push onto
-              this same stack and get the standard back affordance — iOS
-              swipe-back and Android system back both work by default. A tab bar
-              would be premature with one real screen; add Tabs here once Trends
-              / Shopping list / Upload exist as peers. */}
-          <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-        </Stack>
+        {/* Overrides expo-router's auto-mounted NavigationContainer, which
+            otherwise always paints the full-bleed screen background behind
+            the Stack with its hardcoded light theme regardless of `scheme` -
+            see navigationLightTheme/navigationDarkTheme. */}
+        <NavigationThemeProvider
+          value={scheme === 'dark' ? navigationDarkTheme : navigationLightTheme}>
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: theme.colors.background },
+            }}>
+            <Stack.Screen name="index" />
+            {/* Dashboard draws its own brand header, so the native header is off.
+                Future drill-downs (item history, full shopping list) push onto
+                this same stack and get the standard back affordance — iOS
+                swipe-back and Android system back both work by default. A tab bar
+                would be premature with one real screen; add Tabs here once Trends
+                / Shopping list / Upload exist as peers. */}
+            <Stack.Screen name="dashboard" options={{ title: 'Dashboard' }} />
+          </Stack>
+        </NavigationThemeProvider>
       </AppShell>
     </PaperProvider>
   );
