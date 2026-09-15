@@ -1,5 +1,9 @@
+import { Platform } from 'react-native';
 import { MD3DarkTheme, MD3LightTheme, useTheme } from 'react-native-paper';
 import type { MD3Theme } from 'react-native-paper';
+// Type-only: erased at compile time, so this never pulls in the real
+// `expo-router` module (or fights its jest mock) at runtime.
+import type { Theme as NavigationTheme } from 'expo-router';
 
 import { appFontConfig } from './fonts';
 import { darkPalette, palette, radius, spacing, type Palette } from './tokens';
@@ -174,3 +178,59 @@ export const darkTheme: AppTheme = createAppTheme(MD3DarkTheme, darkPalette, {
 });
 
 export const useAppTheme = () => useTheme<AppTheme>();
+
+/**
+ * React Navigation's font shape (mirrors `expo-router`'s own default, which
+ * isn't exported) - `NavigationTheme` requires it even though our screens
+ * never render React Navigation's built-in header/label chrome.
+ */
+const navigationFonts = Platform.select<NavigationTheme['fonts']>({
+  web: {
+    regular: { fontFamily: appFontConfig.bodyMedium.fontFamily, fontWeight: '400' },
+    medium: { fontFamily: appFontConfig.bodyMedium.fontFamily, fontWeight: '500' },
+    bold: { fontFamily: appFontConfig.bodyMedium.fontFamily, fontWeight: '600' },
+    heavy: { fontFamily: appFontConfig.bodyMedium.fontFamily, fontWeight: '700' },
+  },
+  default: {
+    regular: { fontFamily: 'System', fontWeight: '400' },
+    medium: { fontFamily: 'System', fontWeight: '500' },
+    bold: { fontFamily: 'System', fontWeight: '600' },
+    heavy: { fontFamily: 'System', fontWeight: '700' },
+  },
+})!;
+
+/**
+ * React Navigation's own theme, kept in lockstep with {@link lightTheme} /
+ * {@link darkTheme}. `expo-router` mounts its `NavigationContainer`
+ * automatically with a hardcoded light theme (`background: 'rgb(242, 242,
+ * 242)'`) unless a `ThemeProvider` overrides it - without this, the
+ * full-bleed screen background React Navigation paints *behind* every route
+ * (see `expo-router`'s `Background` element) never follows dark mode, and
+ * shows through as a stray light patch anywhere our own view backgrounds
+ * don't fully occlude it (background rules only, no scroll fixed here).
+ */
+export const navigationLightTheme: NavigationTheme = {
+  dark: false,
+  colors: {
+    primary: palette.primary,
+    background: palette.background,
+    card: palette.surface,
+    text: palette.onSurface,
+    border: palette.outline,
+    notification: palette.accent,
+  },
+  fonts: navigationFonts,
+};
+
+export const navigationDarkTheme: NavigationTheme = {
+  dark: true,
+  colors: {
+    primary: darkPalette.primary,
+    background: darkPalette.background,
+    card: darkPalette.surface,
+    text: darkPalette.onSurface,
+    border: darkPalette.outline,
+    notification: darkPalette.accent,
+  },
+  fonts: navigationFonts,
+};
