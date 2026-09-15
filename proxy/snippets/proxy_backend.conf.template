@@ -1,0 +1,30 @@
+# Shared directives for every location that reverse-proxies to the FastAPI
+# backend. Included verbatim from both conf.d/dev.conf and conf.d/static.conf
+# so the two configs can never drift on how the backend is proxied.
+#
+# The upstream host is passed through a variable so nginx resolves it lazily
+# (via the `resolver` set in the enclosing server block) on each request,
+# instead of once at startup. That means the proxy starts and passes
+# `nginx -t` even when the backend is down, and picks up a new backend IP
+# after a restart without needing a reload.
+#
+# The placeholder host below is substituted at image build time (see proxy/
+# Dockerfile's `proxy-conf` stage) — Chainguard nginx's runtime image is
+# distroless (no shell), so this can't be templated with envsubst at
+# container start. docker-compose builds default to `backend` (the compose
+# service's DNS name); a Cloud Run sidecar deployment overrides it to the IP
+# literal `127.0.0.1`, since both containers there share one instance's
+# network namespace. It must be the IP literal, not the hostname `localhost`:
+# nginx only reaches `localhost` here through the `resolver` above (Docker's
+# embedded DNS at 127.0.0.11), which doesn't exist in Cloud Run's sandbox, so
+# the hostname form times out on every request. An IP literal skips the
+# resolver entirely.
+set $backend_upstream http://__BACKEND_UPSTREAM_HOST__:8000;
+proxy_pass                          $backend_upstream$request_uri;
+proxy_http_version                  1.1;
+proxy_set_header  Host              $host;
+proxy_set_header  X-Real-IP         $remote_addr;
+proxy_set_header  X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header  X-Forwarded-Proto $scheme;
+proxy_connect_timeout               5s;
+proxy_read_timeout                  60s;

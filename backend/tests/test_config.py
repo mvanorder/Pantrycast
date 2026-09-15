@@ -68,6 +68,98 @@ def test_database_url_percent_encodes_special_characters() -> None:
     assert "%40" in url  # percent-encoded "@"
 
 
+def test_database_url_uses_cloud_sql_socket_when_configured() -> None:
+    """Verify ``database_url`` switches to the Cloud SQL Auth Proxy socket form."""
+    settings = Settings(
+        _env_file=None,
+        postgres_user="user",
+        postgres_password="password",
+        postgres_password_file=None,
+        postgres_db="pantrycast",
+        cloud_sql_connection_name="pantrycast-prod:us-central1:pantrycast-db",
+    )
+
+    url = settings.database_url.render_as_string(hide_password=False)
+
+    assert url.startswith("postgresql+asyncpg://user:password@/pantrycast?host=")
+    assert "%2Fcloudsql%2Fpantrycast-prod%3Aus-central1%3Apantrycast-db" in url
+
+
+def test_database_url_ignores_postgres_host_and_port_when_cloud_sql_configured(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify a configured ``postgres_host``/``postgres_port`` is dropped, with a warning.
+
+    :param caplog: Pytest fixture capturing log records.
+    :type caplog: pytest.LogCaptureFixture
+    """
+    settings = Settings(
+        _env_file=None,
+        postgres_user="user",
+        postgres_password="password",
+        postgres_password_file=None,
+        postgres_db="pantrycast",
+        postgres_host="should-be-ignored",
+        postgres_port=6543,
+        cloud_sql_connection_name="pantrycast-prod:us-central1:pantrycast-db",
+    )
+
+    url = settings.database_url.render_as_string(hide_password=False)
+
+    assert "should-be-ignored" not in url
+    assert "6543" not in url
+    assert "POSTGRES_HOST/POSTGRES_PORT (should-be-ignored:6543) are ignored" in caplog.text
+
+
+def test_database_url_warns_on_stray_postgres_host_alone(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Verify a non-default ``postgres_host`` alone (default port) still triggers the warning.
+
+    :param caplog: Pytest fixture capturing log records.
+    :type caplog: pytest.LogCaptureFixture
+    """
+    settings = Settings(
+        _env_file=None,
+        postgres_user="user",
+        postgres_password="password",
+        postgres_password_file=None,
+        postgres_db="pantrycast",
+        postgres_host="should-be-ignored",
+        cloud_sql_connection_name="pantrycast-prod:us-central1:pantrycast-db",
+    )
+
+    _ = settings.database_url
+
+    assert "POSTGRES_HOST/POSTGRES_PORT (should-be-ignored:5432) are ignored" in caplog.text
+
+
+def test_cloud_sql_connection_name_rejects_malformed_value() -> None:
+    """Verify a ``cloud_sql_connection_name`` without exactly two colons is rejected."""
+    with pytest.raises(ValidationError, match="must look like"):
+        Settings(_env_file=None, cloud_sql_connection_name="not-a-valid-connection-name")
+
+
+def test_cloud_sql_connection_name_empty_string_treated_as_unset() -> None:
+    """Verify an empty ``cloud_sql_connection_name`` doesn't fail validation or switch modes.
+
+    Matches the truthy-check convention used by ``postgres_password_file`` and
+    the other optional settings, so a blank env var (e.g. from
+    ``${VAR:-}``-style shell interpolation) behaves as "not configured"
+    rather than hard-failing startup.
+    """
+    settings = Settings(
+        _env_file=None,
+        postgres_password="password",
+        postgres_password_file=None,
+        cloud_sql_connection_name="",
+    )
+
+    url = settings.database_url.render_as_string(hide_password=False)
+
+    assert "cloudsql" not in url
+
+
 def test_get_settings_returns_cached_singleton() -> None:
     """Verify ``get_settings`` returns the same cached instance on repeat calls."""
     get_settings.cache_clear()
