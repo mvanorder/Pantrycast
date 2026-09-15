@@ -89,11 +89,17 @@ describe('RootLayout', () => {
 
     await render(<RootLayout />);
 
-    const [{ screenOptions }] = mockedStack.mock.calls[0] as [
-      { screenOptions: { contentStyle: { backgroundColor: string } } },
-    ];
-    // #0E161C is darkPalette.background.
-    expect(screenOptions.contentStyle.backgroundColor).toBe('#0E161C');
+    // The very first render always matches the SSR-safe light theme (see
+    // ThemePreferenceProvider - this avoids a web hydration mismatch) and
+    // only picks up the real OS scheme once `isReady` flips, a tick after
+    // mount, so check the latest call rather than the first.
+    await waitFor(() => {
+      const [{ screenOptions }] = mockedStack.mock.calls.at(-1) as [
+        { screenOptions: { contentStyle: { backgroundColor: string } } },
+      ];
+      // #0E161C is darkPalette.background.
+      expect(screenOptions.contentStyle.backgroundColor).toBe('#0E161C');
+    });
   });
 
   it('selects the light Paper theme when the OS is in light mode', async () => {
@@ -101,10 +107,12 @@ describe('RootLayout', () => {
 
     await render(<RootLayout />);
 
-    const [{ screenOptions }] = mockedStack.mock.calls[0] as [
-      { screenOptions: { contentStyle: { backgroundColor: string } } },
-    ];
-    // #F3F7FB is palette.background.
-    expect(screenOptions.contentStyle.backgroundColor).toBe('#F3F7FB');
+    await waitFor(() => {
+      const [{ screenOptions }] = mockedStack.mock.calls.at(-1) as [
+        { screenOptions: { contentStyle: { backgroundColor: string } } },
+      ];
+      // #F3F7FB is palette.background.
+      expect(screenOptions.contentStyle.backgroundColor).toBe('#F3F7FB');
+    });
   });
 });
