@@ -44,11 +44,25 @@ function isThemeMode(value: unknown): value is ThemeMode {
 }
 
 export function ThemePreferenceProvider({ children }: { children: ReactNode }) {
-  // `useColorScheme` reports `null` during static web prerender / before the OS
-  // value is known; treat anything that isn't 'dark' as light.
-  const systemScheme: ColorScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
+  // On web, `useColorScheme` reports `null` during static prerender (no
+  // `window`) and the *real* OS scheme from the very first client render -
+  // reading it unconditionally would make that first client render disagree
+  // with the statically-rendered (always-light) HTML it's hydrating over.
+  // React detects that as a hydration mismatch (error #418) and discards the
+  // mismatched subtree to re-render it client-only; some subtrees recover
+  // visually from that, but the root layout's persistent AppHeader/AppShell
+  // chrome does not, leaving it stuck on the server's light styling forever
+  // (until some unrelated, non-hydration state update - e.g. a manual theme
+  // toggle - forces a normal re-render). Gating on `isReady` (which only
+  // flips after the initial mount/hydration commit, via the AsyncStorage
+  // effect below) makes the first client render match the server exactly, so
+  // hydration always succeeds; the correct scheme then applies a tick later
+  // via an ordinary, hydration-unrelated re-render, which reliably repaints
+  // every subtree, header included.
+  const rawScheme = useColorScheme();
   const [mode, setModeState] = useState<ThemeMode>('system');
   const [isReady, setIsReady] = useState(false);
+  const systemScheme: ColorScheme = isReady && rawScheme === 'dark' ? 'dark' : 'light';
 
   useEffect(() => {
     let cancelled = false;
