@@ -1,0 +1,104 @@
+# Cloud Run multi-container ("sidecar") service spec for prod. Deployed with
+# `gcloud run services replace` (not `gcloud run deploy`, which has no
+# multi-container support) by .github/workflows/deploy.yml, and by hand for a
+# first-time/manual deploy — see docs/design/uac-design.md's cloud-deployment
+# notes and this repo's deploy plan for the full rationale.
+#
+# Shape: one Cloud Run service, two containers, mirroring docker-compose's
+# backend+proxy split almost exactly:
+#   - `proxy` is the only container with a declared port, which is what makes
+#     it the ingress container — it serves the baked static Expo web export
+#     and reverse-proxies API routes to `backend` over the loopback interface
+#     (both containers share one instance's network namespace).
+#   - `backend` has no declared port and is never reachable except from
+#     `proxy` on localhost — closing the gap where /orders/upload would
+#     otherwise be directly internet-reachable at its own Cloud Run URL.
+#
+# The two `image:` placeholders below are substituted with fully-qualified
+# `...@sha256:<digest>` references before every deploy (never a mutable tag —
+# Cloud Run treats an unchanged image string as a no-op and will silently
+# keep serving the old revision even after a new image is pushed under the
+# same tag; this was hit and confirmed during the first manual deploy).
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: pantrycast-app
+  labels:
+    cloud.googleapis.com/location: us-central1
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/cloudsql-instances: pantrycast-prod:us-central1:pantrycast-db
+        # Cloud Run starts `backend` first and waits for its startupProbe
+        # (below) to pass before starting `proxy` — without this, `proxy`
+        # can start serving before `backend` is ready to accept connections.
+        run.googleapis.com/container-dependencies: '{"proxy":["backend"]}'
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      containers:
+        - name: proxy
+          image: __PROXY_IMAGE__
+          ports:
+            - name: http1
+              containerPort: 8080
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
+        - name: backend
+          image: __BACKEND_IMAGE__
+          env:
+            - name: POSTGRES_USER
+              value: pantrycast
+            - name: POSTGRES_DB
+              value: pantrycast
+            - name: CLOUD_SQL_CONNECTION_NAME
+              value: pantrycast-prod:us-central1:pantrycast-db
+            - name: POSTGRES_PASSWORD_FILE
+              value: /secrets/postgres/password
+            - name: JWT_PRIVATE_KEY_FILE
+              value: /secrets/jwt-private/private.pem
+            - name: JWT_PUBLIC_KEY_FILE
+              value: /secrets/jwt-public/public.pem
+          # Gates when `proxy` starts (see container-dependencies above) —
+          # not just a liveness signal.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 0
+            periodSeconds: 2
+            failureThreshold: 15
+            timeoutSeconds: 2
+          volumeMounts:
+            - name: postgres-password
+              mountPath: /secrets/postgres
+            - name: jwt-private-key
+              mountPath: /secrets/jwt-private
+            - name: jwt-public-key
+              mountPath: /secrets/jwt-public
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+      volumes:
+        - name: postgres-password
+          secret:
+            secretName: postgres-password-prod
+            items:
+              - key: latest
+                path: password
+        - name: jwt-private-key
+          secret:
+            secretName: jwt-private-key-prod
+            items:
+              - key: latest
+                path: private.pem
+        - name: jwt-public-key
+          secret:
+            secretName: jwt-public-key-prod
+            items:
+              - key: latest
+                path: public.pem
