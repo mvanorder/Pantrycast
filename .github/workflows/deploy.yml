@@ -1,0 +1,122 @@
+# Deploys master to Cloud Run prod after CI passes there (or on demand via
+# workflow_dispatch). See deploy/cloud-run/pantrycast-app.yaml for the
+# service shape and the deploy plan's Phase 4 for the full rationale.
+#
+# Auth is Workload Identity Federation, not a long-lived service-account key:
+# the "github-provider" OIDC provider (project pantrycast-prod) trusts only
+# this exact repo, and the pantrycast-deployer service account it impersonates
+# is bound to accept tokens only where attribute.ref == refs/heads/master —
+# enforced server-side by GCP, not by this workflow's own trigger filters.
+#
+# Every action here is pinned to a commit SHA with the version in a trailing
+# comment, matching ci.yml's convention (see that file's header for why).
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  PROJECT_ID: pantrycast-prod
+  REGION: us-central1
+  REPO: us-central1-docker.pkg.dev/pantrycast-prod/pantrycast
+  DOCKER_BUILDKIT: "1"
+
+jobs:
+  deploy:
+    name: Build, migrate, deploy
+    runs-on: ubuntu-latest
+    # workflow_run fires for every CI conclusion (success, failure, etc.) -
+    # only continue past a green CI run. workflow_dispatch has no
+    # workflow_run conclusion to check, so it's always allowed through.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    steps:
+      # For workflow_run, pin to the exact commit CI just passed - master may
+      # have moved on by the time this job starts. workflow_dispatch has no
+      # such commit, so it falls back to whatever ref it was dispatched
+      # against (github.sha).
+      - name: Resolve commit to deploy
+        id: commit
+        run: echo "sha=${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+
+      - id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          project_id: pantrycast-prod
+          workload_identity_provider: projects/473341812282/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: pantrycast-deployer@pantrycast-prod.iam.gserviceaccount.com
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+
+      - name: Build images
+        run: |
+          docker build -f backend/Dockerfile \
+            -t "${REPO}/backend:${{ steps.commit.outputs.sha }}" backend/
+          docker build -f proxy/Dockerfile --target static \
+            --build-arg EXPO_PUBLIC_API_URL=https://pantrycast.app \
+            --build-arg BACKEND_UPSTREAM_HOST=127.0.0.1 \
+            -t "${REPO}/proxy:${{ steps.commit.outputs.sha }}" .
+
+      # Deploys reference the exact digest pushed here, never a mutable tag -
+      # gcloud run services replace treats an unchanged image *string* as a
+      # no-op and would silently keep serving the old revision even though a
+      # new image was just pushed under the same tag (hit and confirmed
+      # during the first manual deploy of this service).
+      - name: Push images and capture digests
+        id: images
+        run: |
+          backend_digest=$(docker push "${REPO}/backend:${{ steps.commit.outputs.sha }}" \
+            | tee /dev/stderr | grep -oP 'digest: \Ksha256:[0-9a-f]+')
+          proxy_digest=$(docker push "${REPO}/proxy:${{ steps.commit.outputs.sha }}" \
+            | tee /dev/stderr | grep -oP 'digest: \Ksha256:[0-9a-f]+')
+          echo "backend=${REPO}/backend@${backend_digest}" >> "$GITHUB_OUTPUT"
+          echo "proxy=${REPO}/proxy@${proxy_digest}" >> "$GITHUB_OUTPUT"
+
+      # Never auto-run on container start (see backend/Dockerfile and
+      # docs/design/uac-design.md) - this is the one explicit place it runs,
+      # once, before the new revision takes traffic.
+      - name: Run database migrations
+        run: |
+          gcloud run jobs update pantrycast-migrate \
+            --project="${PROJECT_ID}" --region="${REGION}" \
+            --image="${{ steps.images.outputs.backend }}"
+          gcloud run jobs execute pantrycast-migrate \
+            --project="${PROJECT_ID}" --region="${REGION}" --wait
+
+      - name: Deploy to Cloud Run
+        run: |
+          sed \
+            -e "s|__BACKEND_IMAGE__|${{ steps.images.outputs.backend }}|" \
+            -e "s|__PROXY_IMAGE__|${{ steps.images.outputs.proxy }}|" \
+            deploy/cloud-run/pantrycast-app.yaml > "$RUNNER_TEMP/pantrycast-app.yaml"
+          gcloud run services replace "$RUNNER_TEMP/pantrycast-app.yaml" \
+            --project="${PROJECT_ID}" --region="${REGION}"
+
+      - name: Smoke test
+        run: |
+          url=$(gcloud run services describe pantrycast-app \
+            --project="${PROJECT_ID}" --region="${REGION}" --format='value(status.url)')
+          for path in /health /health/db; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 20 "${url}${path}")
+            echo "${path} -> ${code}"
+            if [ "$code" != "200" ]; then
+              echo "::error::${path} returned ${code}, expected 200"
+              exit 1
+            fi
+          done
