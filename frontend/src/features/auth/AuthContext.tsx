@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { fetchCurrentUser, login, logout, type UserProfile } from './api';
+import { fetchCurrentUser, login, logout, register, type UserProfile } from './api';
 import {
   clearTokenPair,
   getAccessToken,
@@ -21,6 +21,9 @@ export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated';
 
 type Credentials = { email: string; password: string };
 
+/** Details for a new account — {@link Credentials} plus an optional display name. */
+export type NewAccountDetails = Credentials & { displayName?: string };
+
 type AuthContextValue = {
   status: AuthStatus;
   /** The signed-in user's profile, or `null` unless `status` is `authenticated`. */
@@ -31,6 +34,14 @@ type AuthContextValue = {
    * {@link ApiError} from `POST /auth/login` on a bad credential.
    */
   signIn: (credentials: Credentials) => Promise<void>;
+  /**
+   * Create a new account, then sign in as it — `POST /auth/register` issues
+   * no token pair of its own, so this chains a {@link signIn} with the same
+   * credentials. Rejects (leaving the session untouched) with the
+   * {@link ApiError} from whichever call failed — a 400 from register for a
+   * taken email, or whatever `signIn` can reject with.
+   */
+  signUp: (details: NewAccountDetails) => Promise<void>;
   /** Revoke the session server-side (best effort) and clear the local tokens. */
   signOut: () => Promise<void>;
 };
@@ -84,6 +95,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus('authenticated');
   }, []);
 
+  const signUp = useCallback(
+    async (details: NewAccountDetails) => {
+      await register(details);
+      await signIn({ email: details.email, password: details.password });
+    },
+    [signIn],
+  );
+
   const signOut = useCallback(async () => {
     const [accessToken, refreshToken] = await Promise.all([
       getAccessToken(),
@@ -100,8 +119,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ status, user, signIn, signOut }),
-    [status, user, signIn, signOut],
+    () => ({ status, user, signIn, signUp, signOut }),
+    [status, user, signIn, signUp, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

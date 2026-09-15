@@ -19,6 +19,12 @@ jest.mock('../../auth/AuthContext', () => ({
   useAuth: () => ({ status: 'unauthenticated', user: null, signIn: jest.fn(), signOut: jest.fn() }),
 }));
 
+const mockRouterPush = jest.fn();
+
+jest.mock('expo-router', () => ({
+  useRouter: () => ({ push: mockRouterPush, replace: jest.fn() }),
+}));
+
 const mockedUseWindowDimensions = jest.mocked(useWindowDimensions);
 
 function setViewport(width: number) {
@@ -32,6 +38,7 @@ function setViewport(width: number) {
 
 afterEach(() => {
   mockedUseWindowDimensions.mockReset();
+  mockRouterPush.mockClear();
   jest.restoreAllMocks();
 });
 
@@ -89,6 +96,21 @@ describe('LandingScreen', () => {
     fireEvent.press(screen.getByLabelText('See how it works'));
 
     expect(scrollTo).toHaveBeenCalledWith({ y: 1400, animated: true });
+  });
+
+  it('navigates every "Get started" affordance to /signup', async () => {
+    setViewport(1280);
+    await renderWithProviders(<LandingScreen />);
+
+    const buttons = screen.getAllByLabelText('Get started free with Pantrycast');
+    for (const button of buttons) {
+      await act(async () => {
+        fireEvent.press(button);
+      });
+    }
+
+    expect(mockRouterPush).toHaveBeenCalledTimes(buttons.length);
+    expect(mockRouterPush).toHaveBeenCalledWith('/signup');
   });
 
   it('scrolls to the top before the section has been measured', async () => {

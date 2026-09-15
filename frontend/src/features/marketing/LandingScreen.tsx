@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { ScrollView, StyleSheet, type LayoutChangeEvent } from 'react-native';
+import { useRouter } from 'expo-router';
 
-import { useGetStartedNotice } from '@/components/GetStartedNotice';
 import { ScreenScrollView } from '@/components/ScreenScrollView';
 import { useAppTheme } from '@/theme';
 
@@ -16,14 +16,12 @@ import { SeeItInActionSection } from './components/SeeItInActionSection';
  * ({@link AppShell}) and the footer comes from {@link ScreenScrollView}, so
  * this screen is just the sections in between.
  *
- * Sign-up does not exist yet, so every "Get started" affordance routes through
- * {@link useGetStartedNotice}, which acknowledges the tap with the shared
- * Snackbar rather than silently doing nothing - a dead primary button is worse
- * than an honest "not built yet".
+ * Every "Get started" affordance on the page routes to `/signup`.
  */
 export function LandingScreen() {
   const theme = useAppTheme();
-  const notifyGetStarted = useGetStartedNotice();
+  const router = useRouter();
+  const handleGetStarted = useCallback(() => router.push('/signup'), [router]);
   const scrollRef = useRef<ScrollView>(null);
   const howItWorksY = useRef(0);
 
@@ -42,12 +40,12 @@ export function LandingScreen() {
       showsVerticalScrollIndicator={false}
     >
       <HeroSection
-        onGetStarted={notifyGetStarted}
+        onGetStarted={handleGetStarted}
         onSeeHowItWorks={handleSeeHowItWorks}
       />
       <HowItWorksSection onLayout={handleHowItWorksLayout} />
-      <SeeItInActionSection onGetStarted={notifyGetStarted} />
-      <BottomCtaSection onGetStarted={notifyGetStarted} />
+      <SeeItInActionSection onGetStarted={handleGetStarted} />
+      <BottomCtaSection onGetStarted={handleGetStarted} />
     </ScreenScrollView>
   );
 }

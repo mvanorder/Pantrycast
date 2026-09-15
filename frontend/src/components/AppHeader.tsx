@@ -8,7 +8,6 @@ import { layout, radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 import { BrandMark } from './BrandMark';
 import { ThemeToggle } from './ThemeToggle';
-import { useGetStartedNotice } from './GetStartedNotice';
 
 /**
  * Global app header: brand lockup left, theme toggle plus the session actions
@@ -19,11 +18,9 @@ import { useGetStartedNotice } from './GetStartedNotice';
  * site with no per-screen back affordance, and an Appbar would imply navigation
  * chrome that does not exist here.
  *
- * Signed out it shows "Log in" (routes to `/login`) and "Get started"; since
- * sign-up does not exist yet, "Get started" acknowledges the tap with the
- * shared Snackbar {@link AppShell} owns rather than silently doing nothing.
- * Once a session is authenticated the bar shows the signed-in identity and a
- * "Log out" action in its place.
+ * Signed out it shows "Log in" (routes to `/login`) and "Get started" (routes
+ * to `/signup`). Once a session is authenticated the bar shows the signed-in
+ * identity and a "Log out" action in its place.
  */
 export function AppHeader() {
   const theme = useAppTheme();
@@ -32,7 +29,6 @@ export function AppHeader() {
   const router = useRouter();
   const pathname = usePathname();
   const { status, user, signOut } = useAuth();
-  const notifyGetStarted = useGetStartedNotice();
 
   const account =
     status === 'authenticated' && user
@@ -119,18 +115,21 @@ export function AppHeader() {
                   Log in
                 </Button>
               )}
-              <Button
-                mode="contained"
-                onPress={notifyGetStarted}
-                compact={isCompact}
-                style={styles.cta}
-                contentStyle={styles.ctaContent}
-                labelStyle={styles.ctaLabel}
-                accessibilityRole="button"
-                accessibilityLabel="Get started with Pantrycast"
-              >
-                Get started
-              </Button>
+              {/* Hidden on `/signup` itself, same reasoning as "Log in" above. */}
+              {pathname === '/signup' ? null : (
+                <Button
+                  mode="contained"
+                  onPress={() => router.push('/signup')}
+                  compact={isCompact}
+                  style={styles.cta}
+                  contentStyle={styles.ctaContent}
+                  labelStyle={styles.ctaLabel}
+                  accessibilityRole="button"
+                  accessibilityLabel="Get started with Pantrycast"
+                >
+                  Get started
+                </Button>
+              )}
             </>
           )}
         </View>

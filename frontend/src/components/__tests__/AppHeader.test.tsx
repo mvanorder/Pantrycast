@@ -7,7 +7,6 @@ import {
   screen,
 } from '../../../test-utils/render';
 import { AppHeader } from '../AppHeader';
-import { GetStartedNoticeContext } from '../GetStartedNotice';
 
 jest.mock('react-native/Libraries/Utilities/useWindowDimensions');
 
@@ -50,12 +49,8 @@ async function press(label: string) {
   });
 }
 
-function renderHeader(onGetStarted: () => void = jest.fn()) {
-  return renderWithProviders(
-    <GetStartedNoticeContext.Provider value={onGetStarted}>
-      <AppHeader />
-    </GetStartedNoticeContext.Provider>,
-  );
+function renderHeader() {
+  return renderWithProviders(<AppHeader />);
 }
 
 beforeEach(() => {
@@ -89,14 +84,22 @@ describe('AppHeader', () => {
     expect(screen.getByLabelText('Get started with Pantrycast')).toBeOnTheScreen();
   });
 
-  it('routes the "Get started" action through the shared notice', async () => {
+  it('navigates to the signup route from the "Get started" action', async () => {
     setViewport(1280);
-    const onGetStarted = jest.fn();
-    await renderHeader(onGetStarted);
+    await renderHeader();
 
     await press('Get started with Pantrycast');
 
-    expect(onGetStarted).toHaveBeenCalledTimes(1);
+    expect(mockRouterPush).toHaveBeenCalledWith('/signup');
+  });
+
+  it('hides the "Get started" action when already on the signup route', async () => {
+    setViewport(1280);
+    mockPathname = '/signup';
+    await renderHeader();
+
+    expect(screen.queryByLabelText('Get started with Pantrycast')).not.toBeOnTheScreen();
+    expect(screen.getByLabelText('Log in to Pantrycast')).toBeOnTheScreen();
   });
 
   it('shows the signed-in identity and logs out when a session is authenticated', async () => {
