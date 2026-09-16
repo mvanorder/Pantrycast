@@ -2,13 +2,14 @@
   "info": {
     "_postman_id": "6b49adc0-1d36-48fa-bfd9-cbbeda5fd6ea",
     "name": "Pantrycast API",
-    "description": "Backend for the Pantrycast project. Covers every endpoint in docs/api/openapi.json: health checks, order-history CSV upload, and the register/login/refresh/logout auth loop (see docs/design/uac-design.md §1). Run the Auth folder top-to-bottom once to populate the tokens the Users/logout requests need — see postman/README.md.",
+    "description": "Backend for the Pantrycast project. Covers every endpoint in docs/api/openapi.json: health checks, order-history CSV upload, and the register/verify-email/login/refresh/logout auth loop (see docs/design/uac-design.md §1). Run the Auth folder top-to-bottom once to populate the tokens the Users/logout requests need — see postman/README.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "base_url", "value": "http://localhost:8000", "type": "string" },
     { "key": "test_email", "value": "", "type": "string" },
     { "key": "test_password", "value": "", "type": "string" },
+    { "key": "verification_token", "value": "", "type": "string" },
     { "key": "access_token", "value": "", "type": "string" },
     { "key": "refresh_token", "value": "", "type": "string" }
   ],
@@ -101,7 +102,7 @@
     },
     {
       "name": "Auth",
-      "description": "Run these in order: Register creates an account and picks a fresh random test_email/test_password (only if those collection variables are still empty); Login exchanges them for a token pair; Refresh rotates it; Logout/Logout all revoke it. Users/Get current user needs the access_token Login (or Refresh) set.",
+      "description": "Run these in order: Register creates an account and picks a fresh random test_email/test_password (only if those collection variables are still empty), and schedules a verification email; Verify email address needs the token from that email pasted into verification_token manually (see its own description) and isn't part of the auto-chained run; Login exchanges test_email/test_password for a token pair; Refresh rotates it; Logout/Logout all revoke it. Users/Get current user needs the access_token Login (or Refresh) set.",
       "item": [
         {
           "_postman_id": "58de17c8-bc78-40dd-a1fb-8b231e864cd0",
@@ -155,6 +156,38 @@
               "path": ["auth", "register"]
             }
           },
+          "response": []
+        },
+        {
+          "_postman_id": "2e9f4a1c-6b6d-4c7e-8f0a-1f2c3d4e5f6a",
+          "name": "Verify email address",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{verification_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/verify-email",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "verify-email"]
+            },
+            "description": "Needs manual setup, so it's not part of the auto-chained Register -> Log in -> ... sequence. Register (above) schedules a verification email, but the raw token only ever appears in that email itself — or, with EMAIL_BACKEND=console (the local-dev default), in the backend server logs, as the `token=` query param on the emailed .../verify-email link. Copy that value into the verification_token collection variable, then run this request."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204 (400/422 means verification_token is empty, wrong, expired, or already used - see this request\\'s description)', () => {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
           "response": []
         },
         {

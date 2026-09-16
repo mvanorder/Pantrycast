@@ -28,6 +28,16 @@ class RegisterResponse(BaseModel):
     display_name: str | None
 
 
+class VerifyEmailRequest(BaseModel):
+    """Request body for ``POST /auth/verify-email``."""
+
+    # Verification tokens are also secrets.token_urlsafe(32) (~43 chars) —
+    # same rationale as RefreshRequest.refresh_token: bounded well above the
+    # real length so an oversized value 422s here rather than paying a hash
+    # + DB round trip for an obviously-bogus request.
+    token: str = Field(max_length=512)
+
+
 class LoginRequest(BaseModel):
     """Request body for ``POST /auth/login``."""
 

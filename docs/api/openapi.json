@@ -12,7 +12,7 @@
           "auth"
         ],
         "summary": "Register a new account",
-        "description": "Create a new user account with a password identity.\n\nLeaves ``email_verified=False`` but does not block login on it \u2014\nemail verification is out of scope for this pass (uac-design.md \u00a71\n\"Account states\"); the account behaves as fully active immediately.\n\n:param payload: The registration request body.\n:type payload: RegisterRequest\n:param db: The database session, injected via dependency.\n:type db: AsyncSession\n:raises HTTPException: 400 if the email is already registered \u2014 checked\n    up front, and again via the unique-constraint race below (two\n    concurrent registrations for the same not-yet-existing email).\n:returns: The newly created user.\n:rtype: User\n\n.. note::\n    Unlike ``login``'s deliberately generic 401 (anti-enumeration), this\n    does confirm whether an email is already registered \u2014 an accepted,\n    conscious trade-off for this pass, not an oversight: a distinct\n    \"email taken\" error is common/expected registration UX, and the\n    enumeration risk here is lower-value to an attacker than at login\n    (no password guess is validated). Revisit if that stops holding\n    (uac-design.md \u00a71).",
+        "description": "Create a new user account with a password identity.\n\nLeaves ``email_verified=False`` and does not block login on it\n(uac-design.md \u00a71 \"Account states\" \u2014 verifying flips the flag but isn't\nrequired to use the account). Stages a ``VerificationToken`` and, once\nthe transaction commits, schedules the verification email via\n``BackgroundTasks`` \u2014 the flag is flipped by redeeming that email's link\nthrough ``POST /auth/verify-email``.\n\n:param payload: The registration request body.\n:type payload: RegisterRequest\n:param background_tasks: Used to schedule the verification email after\n    the response is ready, so a slow SMTP exchange never blocks it.\n:type background_tasks: BackgroundTasks\n:param db: The database session, injected via dependency.\n:type db: AsyncSession\n:param settings: Application settings (email base URL, token TTL).\n:type settings: Settings\n:param sender: The configured email sender, injected via dependency.\n:type sender: EmailSender\n:raises HTTPException: 400 if the email is already registered \u2014 checked\n    up front, and again via the unique-constraint race below (two\n    concurrent registrations for the same not-yet-existing email).\n:returns: The newly created user.\n:rtype: User\n\n.. note::\n    Unlike ``login``'s deliberately generic 401 (anti-enumeration), this\n    does confirm whether an email is already registered \u2014 an accepted,\n    conscious trade-off for this pass, not an oversight: a distinct\n    \"email taken\" error is common/expected registration UX, and the\n    enumeration risk here is lower-value to an attacker than at login\n    (no password guess is validated). Revisit if that stops holding\n    (uac-design.md \u00a71).",
         "operationId": "register_auth_register_post",
         "requestBody": {
           "content": {
@@ -34,6 +34,41 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Confirm an email address with a verification token",
+        "description": "Consume a single-use email-verification token and flip ``email_verified``.\n\nLooked up by exact hash equality, filtered on ``purpose='email_verify'``\nin the same query \u2014 a ``password_reset``-purpose token's hash therefore\nnever matches this lookup and is indistinguishable from an unknown token\n(400), rather than being surfaced as a distinct \"wrong purpose\" error;\nthis avoids leaking that the token exists at all under a different\npurpose.\n\nRow-locked with ``.with_for_update()`` for the same reason as\n:func:`refresh` \u2014 without it, two concurrent requests for the same\nstill-valid token could both read ``consumed_at is None`` before either\ncommits, double-spending a single-use token.\n\nDoes not gate login on ``email_verified`` and does not issue a new\nsession \u2014 see uac-design.md \u00a71 \"Account states\" / the endpoint table.\n\n:param payload: The verify-email request body.\n:type payload: VerifyEmailRequest\n:param db: The database session, injected via dependency.\n:type db: AsyncSession\n:raises HTTPException: 400 if the token is unknown, malformed, or\n    belongs to a different purpose; 422 if it's a real token that has\n    already expired or already been consumed.",
+        "operationId": "verify_email_auth_verify_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
           },
           "422": {
             "description": "Validation Error",
@@ -609,6 +644,21 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VerifyEmailRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 512,
+            "title": "Token"
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailRequest",
+        "description": "Request body for ``POST /auth/verify-email``."
       }
     },
     "securitySchemes": {

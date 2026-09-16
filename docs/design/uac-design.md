@@ -13,10 +13,11 @@ silent token refresh on 401 are not. The **email sender** that email
 verification and password reset were blocked on now exists: a provider-agnostic SMTP sender
 behind an `EmailSender` protocol, a console fallback for local dev, message templates, the
 `verification_tokens` table + migration, and token generate/hash helpers (`backend/app/mailer/`,
-`backend/app/tokens.py`, `backend/app/models/verification_token.py`). Still design-only: RBAC
-enforcement (§3), the Google OAuth flow (§4), and the `verify-email` / `password-reset`
-**endpoints** themselves (the sender is ready; the endpoints + token consume/expire logic are the
-remaining work).
+`backend/app/tokens.py`, `backend/app/models/verification_token.py`). `POST /auth/verify-email`
+is now built too, along with `register`'s token-issuing/send wiring — the full signup → email →
+verify loop is reachable end to end (`backend/app/routers/auth.py`). Still design-only: RBAC
+enforcement (§3), the Google OAuth flow (§4), and the `password-reset` endpoints (same sender/token
+infra, just not wired to endpoints yet).
 Scope: user accounts, authentication, authorization (RBAC), and the container/deployment
 architecture needed to run this at anywhere from single-user to millions-of-users scale.
 
@@ -109,11 +110,11 @@ the function's docstring). Revisit the access-token payload once §3 lands.
 ### Authentication endpoints [core password loop implemented; see below for what isn't]
 
 Everything above describes the token *strategy*; this is the HTTP surface that actually issues
-and consumes them. `register`/`login`/`refresh`/`logout`/`logout-all`/`GET /users/me` are built
-(`backend/app/routers/auth.py`, `backend/app/routers/users.py`, `backend/app/dependencies.py`);
-`verify-email`, `password-reset`, and the Google OAuth endpoints (§4) are not — see the table
-below for which is which. This is separate from the `create-superuser` CLI (§2), which writes
-`users`/`auth_identities` rows directly rather than going through this API.
+and consumes them. `register`/`verify-email`/`login`/`refresh`/`logout`/`logout-all`/
+`GET /users/me` are built (`backend/app/routers/auth.py`, `backend/app/routers/users.py`,
+`backend/app/dependencies.py`); `password-reset` and the Google OAuth endpoints (§4) are not —
+see the table below for which is which. This is separate from the `create-superuser` CLI (§2),
+which writes `users`/`auth_identities` rows directly rather than going through this API.
 
 **Transport.** The access token travels as a standard `Authorization: Bearer <token>` header —
 not a cookie — because Expo Router (`frontend/`) ships the same codebase to native iOS/Android and
@@ -132,7 +133,7 @@ placeholder per the file's own comment, not yet the SecureStore split described 
 | Endpoint | Auth required | Does |
 |---|---|---|
 | `POST /auth/register` **[built]** | none | Create a `users` row + a `password` `auth_identities` row. Simplification: leaves `email_verified=False` but does **not** block login on it (no verification flow exists — see Account states below) — the account behaves as fully active immediately. |
-| `POST /auth/verify-email` | none (token in body) | Consume a verification token; flip `email_verified`/state to `active`. **Not built** — the email sender, templates, and `verification_tokens` table now exist (`backend/app/mailer/`, `backend/app/tokens.py`); the endpoint, the token-issuing call on `register`, and the consume/expire logic are the remaining work. |
+| `POST /auth/verify-email` **[built]** | none (token in body) | Consume a verification token: looked up by exact hash + `purpose='email_verify'` (row-locked against a double-spend race), then flip `email_verified` to true. Unknown token, malformed token, or one belonging to a different purpose (e.g. `password_reset`) → 400, indistinguishable from each other. A real token that's expired or already consumed → 422. Does not gate login and does not issue a new session (see Account states below). `register` (above) is what issues these tokens and schedules the email. |
 | `POST /auth/login` **[built]** | none | Verify `email`+`password` against `auth_identities.secret_hash` (argon2), reject if the account is `is_active=False`; on success, update `last_login_at` and issue an access/refresh token pair. Every failure mode (unknown email, wrong password, Google-only account, disabled account) returns the *same* generic 401 — deliberate anti-enumeration, not an oversight. |
 | `POST /auth/refresh` **[built]** | refresh token (body) | Validate + rotate the refresh token; issue a new pair. See the reuse-detection note below. |
 | `POST /auth/logout` **[built]** | access token | Revoke the refresh token tied to the current session/device — silently a no-op (still 204) if that token doesn't exist or belongs to someone else, so an authenticated caller can't use this to force-log-out another user or probe whether a token exists. |
@@ -177,11 +178,12 @@ verification any protected route needs:
   built** — no Redis exists yet to back one (§7) — but `backend/app/routers/auth.py` marks exactly
   where a rate-limiting `Depends(...)` would slot into `login`/`register`/`refresh`.
 
-### Email delivery [sender built; no endpoint uses it yet]
+### Email delivery [sender built; used by register (send) and verify-email (consume)]
 
-The `verify-email` / `password-reset` endpoints will each: issue a `verification_tokens` row,
-**commit**, then hand the send to FastAPI `BackgroundTasks` so a slow SMTP exchange never blocks
-the response. `backend/app/mailer/` is built for this:
+`register` issues a `verification_tokens` row, **commits**, then hands the send to FastAPI
+`BackgroundTasks` so a slow SMTP exchange never blocks the response; `verify-email` consumes it.
+The still-unbuilt `password-reset` endpoints will follow the identical pattern.
+`backend/app/mailer/` is built for this:
 
 - **`EmailSender` protocol** — the single seam. `SmtpEmailSender` (`aiosmtplib`, provider-agnostic
   — SES SMTP, Postmark, Mailgun, a self-run relay) is the real one; `ConsoleEmailSender` logs
@@ -206,15 +208,16 @@ the response. `backend/app/mailer/` is built for this:
 `pending_verification` → `active` → `disabled` (admin action) — enforced as a check in the auth
 dependency, not scattered across endpoints.
 
-**Implementation note:** there's no `pending_verification` state actually enforced today — reaching
-`active` needs the email verification *endpoint*, which isn't built yet (the sender and
-`verification_tokens` table it depends on now are — see "Email delivery" above), so
-`POST /auth/register` leaves the account immediately usable (`email_verified=False`, but login
-doesn't check it) rather than blocking it in limbo. The one gate that *is* enforced is `is_active`
-(→ `disabled`), checked in `_authenticate_password` (`backend/app/routers/auth.py`). No new column
-was added for this — `users.is_active`/`email_verified` (already migrated, §5) are enough to
-approximate the state machine until the verification flow exists to justify a dedicated state
-column.
+**Implementation note:** there's no `pending_verification` state actually enforced today.
+`POST /auth/verify-email` (built) flips `email_verified` to true on redemption, but nothing gates
+login or any other endpoint on it — `POST /auth/register` leaves the account immediately usable
+(`email_verified=False`, but login doesn't check it) rather than blocking it in limbo, and
+redeeming the token afterward doesn't unlock anything new either. `pending_verification`/`active`
+remain conceptual, not enforced, states — a deliberate scope decision, not a gap to fix
+incidentally here. The one gate that *is* enforced is `is_active` (→ `disabled`), checked in
+`_authenticate_password` (`backend/app/routers/auth.py`). No new column was added for either flag —
+`users.is_active`/`email_verified` (already migrated, §5) are enough to approximate the state
+machine until a real reason to enforce it exists.
 
 ### Frontend integration
 
@@ -387,8 +390,8 @@ The `users`/`auth_identities`/`refresh_tokens`/`verification_tokens`/`roles`/`pe
 (`backend/app/models/{user,verification_token,rbac,audit}.py`) with generated migrations
 (`0e452124ee78_add_uac_tables.py` for the first eight, `ceec9dedc42b_add_verification_tokens_table.py`
 for `verification_tokens`) — schema is done; the RBAC-enforcement *code* that uses these tables is
-not (§3), and the `verify-email` / `password-reset` endpoints that write/consume
-`verification_tokens` rows aren't either (§1). `orders`/`order_items` are intentionally **not yet
+not (§3), and the `password-reset` endpoints that would write/consume `verification_tokens` rows
+alongside `register`/`verify-email` aren't either (§1). `orders`/`order_items` are intentionally **not yet
 implemented** — that part of the schema needs its plan refined before implementation (open
 questions: import-time dedup key, whether `order_number` is unique per-user or globally, final
 shape of `tracking_numbers`) — so they're listed below as design-only, matching everything else
