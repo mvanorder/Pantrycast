@@ -9,9 +9,15 @@ password-auth HTTP loop is also now built and verified end-to-end against a real
 `register`/`login`/`refresh`/`logout`/`logout-all`, JWT issuance/verification, and the
 `get_current_user` dependency (§1 "Authentication endpoints"). On the frontend, login/session
 restore/route-guarding are built (§1 "Frontend integration"); signup, account management, and
-silent token refresh on 401 are not. Still design-only: RBAC enforcement (§3), the Google OAuth
-flow (§4), and email verification/password reset (both need an email sender that doesn't exist
-yet).
+silent token refresh on 401 are not. The **email sender** that email
+verification and password reset were blocked on now exists: a provider-agnostic SMTP sender
+behind an `EmailSender` protocol, a console fallback for local dev, message templates, the
+`verification_tokens` table + migration, and token generate/hash helpers (`backend/app/mailer/`,
+`backend/app/tokens.py`, `backend/app/models/verification_token.py`). `POST /auth/verify-email`
+is now built too, along with `register`'s token-issuing/send wiring — the full signup → email →
+verify loop is reachable end to end (`backend/app/routers/auth.py`). Still design-only: RBAC
+enforcement (§3), the Google OAuth flow (§4), and the `password-reset` endpoints (same sender/token
+infra, just not wired to endpoints yet).
 Scope: user accounts, authentication, authorization (RBAC), and the container/deployment
 architecture needed to run this at anywhere from single-user to millions-of-users scale.
 
@@ -66,6 +72,16 @@ models matching this shape, with a few concrete choices the design above left op
 - Password reset and email verification use short-lived, single-use signed tokens (JWT or random
   token + hash stored in a `verification_tokens` table with an `expires_at`), delivered by email.
 
+**Implemented** (`backend/app/tokens.py`, `backend/app/models/verification_token.py`): the random
+token + hash approach, not JWT. `generate_verification_token()` is `secrets.token_urlsafe(32)` and
+`hash_verification_token()` is SHA-256 hex — identical rationale to the refresh token
+(`hash_refresh_token`, Sessions and tokens below): high-entropy value, looked up by exact hash
+equality. The `verification_tokens` table has `token_hash` (unique), `purpose` (`email_verify` |
+`password_reset`, DB-`CHECK`-constrained like `auth_identities.provider`), `expires_at`,
+`consumed_at` (set on redemption, so reuse is detectable), and a `user_id` FK
+(`ON DELETE CASCADE`). Delivery is `backend/app/mailer/` — see the endpoints table for what still
+isn't built.
+
 ### Sessions and tokens
 
 Given the "unknown number of users, possibly millions" target, **avoid server-side session
@@ -94,11 +110,11 @@ the function's docstring). Revisit the access-token payload once §3 lands.
 ### Authentication endpoints [core password loop implemented; see below for what isn't]
 
 Everything above describes the token *strategy*; this is the HTTP surface that actually issues
-and consumes them. `register`/`login`/`refresh`/`logout`/`logout-all`/`GET /users/me` are built
-(`backend/app/routers/auth.py`, `backend/app/routers/users.py`, `backend/app/dependencies.py`);
-`verify-email`, `password-reset`, and the Google OAuth endpoints (§4) are not — see the table
-below for which is which. This is separate from the `create-superuser` CLI (§2), which writes
-`users`/`auth_identities` rows directly rather than going through this API.
+and consumes them. `register`/`verify-email`/`login`/`refresh`/`logout`/`logout-all`/
+`GET /users/me` are built (`backend/app/routers/auth.py`, `backend/app/routers/users.py`,
+`backend/app/dependencies.py`); `password-reset` and the Google OAuth endpoints (§4) are not —
+see the table below for which is which. This is separate from the `create-superuser` CLI (§2),
+which writes `users`/`auth_identities` rows directly rather than going through this API.
 
 **Transport.** The access token travels as a standard `Authorization: Bearer <token>` header —
 not a cookie — because Expo Router (`frontend/`) ships the same codebase to native iOS/Android and
@@ -117,12 +133,12 @@ placeholder per the file's own comment, not yet the SecureStore split described 
 | Endpoint | Auth required | Does |
 |---|---|---|
 | `POST /auth/register` **[built]** | none | Create a `users` row + a `password` `auth_identities` row. Simplification: leaves `email_verified=False` but does **not** block login on it (no verification flow exists — see Account states below) — the account behaves as fully active immediately. |
-| `POST /auth/verify-email` | none (token in body) | Consume a verification token; flip `email_verified`/state to `active`. **Not built** — needs an email sender that doesn't exist. |
+| `POST /auth/verify-email` **[built]** | none (token in body) | Consume a verification token: looked up by exact hash + `purpose='email_verify'` (row-locked against a double-spend race), then flip `email_verified` to true. Unknown token, malformed token, or one belonging to a different purpose (e.g. `password_reset`) → 400, indistinguishable from each other. A real token that's expired or already consumed → 422. Does not gate login and does not issue a new session (see Account states below). `register` (above) is what issues these tokens and schedules the email. |
 | `POST /auth/login` **[built]** | none | Verify `email`+`password` against `auth_identities.secret_hash` (argon2), reject if the account is `is_active=False`; on success, update `last_login_at` and issue an access/refresh token pair. Every failure mode (unknown email, wrong password, Google-only account, disabled account) returns the *same* generic 401 — deliberate anti-enumeration, not an oversight. |
 | `POST /auth/refresh` **[built]** | refresh token (body) | Validate + rotate the refresh token; issue a new pair. See the reuse-detection note below. |
 | `POST /auth/logout` **[built]** | access token | Revoke the refresh token tied to the current session/device — silently a no-op (still 204) if that token doesn't exist or belongs to someone else, so an authenticated caller can't use this to force-log-out another user or probe whether a token exists. |
 | `POST /auth/logout-all` **[built]** | access token | Revoke every `refresh_tokens` row for the user ("sign out all devices"). |
-| `POST /auth/password-reset` / `POST /auth/password-reset/confirm` | none | Same short-lived-token pattern as email verification. **Not built** — same email-sender gap. |
+| `POST /auth/password-reset` / `POST /auth/password-reset/confirm` | none | Same short-lived-token pattern as email verification (`purpose='password_reset'`). **Not built** — same status: sender + token infra ready, endpoints are the remaining work. |
 | `GET /auth/google/login`, `GET /auth/google/callback` | none | The OAuth flow specified in §4. **Not built.** |
 | `GET /users/me` **[built]** | access token | Return the caller's own profile, re-fetched from the DB by the token's `sub` rather than trusting cached claims — the simplest possible exercise of the dependency below. |
 
@@ -162,18 +178,46 @@ verification any protected route needs:
   built** — no Redis exists yet to back one (§7) — but `backend/app/routers/auth.py` marks exactly
   where a rate-limiting `Depends(...)` would slot into `login`/`register`/`refresh`.
 
+### Email delivery [sender built; used by register (send) and verify-email (consume)]
+
+`register` issues a `verification_tokens` row, **commits**, then hands the send to FastAPI
+`BackgroundTasks` so a slow SMTP exchange never blocks the response; `verify-email` consumes it.
+The still-unbuilt `password-reset` endpoints will follow the identical pattern.
+`backend/app/mailer/` is built for this:
+
+- **`EmailSender` protocol** — the single seam. `SmtpEmailSender` (`aiosmtplib`, provider-agnostic
+  — SES SMTP, Postmark, Mailgun, a self-run relay) is the real one; `ConsoleEmailSender` logs
+  instead of sending and is the zero-setup default when `SMTP_HOST` is unset (same spirit as the
+  ephemeral JWT keypair). A queue-backed sender for the future `worker` (§6) drops in here with no
+  call-site changes.
+- **`delivery.py`** — `send_verification_email` / `send_password_reset_email`, the functions a
+  route passes to `background_tasks.add_task(...)`. They take plain values only (a background task
+  runs after the request's DB session has closed) and **log, not raise**, on a delivery failure —
+  the response is already sent and there's no queue to retry on yet.
+- **Config** — `SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_SECURITY`/`EMAIL_FROM`/`EMAIL_BASE_URL`
+  plus `SMTP_PASSWORD`/`SMTP_PASSWORD_FILE` (the same secret-file convention as `POSTGRES_PASSWORD`
+  — a Docker secret in staging/prod, §6). Since a background send only logs its failures,
+  `Settings` validates the email config at startup — `EMAIL_BACKEND=smtp` (set in the staging/prod
+  env templates) makes a missing host a boot error; a half-configured `SMTP_USER`/`SMTP_PASSWORD`
+  pair, a missing `SMTP_PASSWORD_FILE`, `SMTP_SECURITY=plaintext` to a non-local host, a malformed
+  `EMAIL_FROM`, and a scheme-less `EMAIL_BASE_URL` are all rejected there too. Links point at a
+  **frontend** page (`{EMAIL_BASE_URL}/verify-email?token=…`), not the API endpoint.
+
 ### Account states
 
 `pending_verification` → `active` → `disabled` (admin action) — enforced as a check in the auth
 dependency, not scattered across endpoints.
 
-**Implementation note:** there's no `pending_verification` state actually enforced today — reaching
-`active` needs the (not-built) email verification flow, so `POST /auth/register` leaves the account
-immediately usable (`email_verified=False`, but login doesn't check it) rather than blocking it in
-limbo. The one gate that *is* enforced is `is_active` (→ `disabled`), checked in
-`_authenticate_password` (`backend/app/routers/auth.py`). No new column was added for this —
+**Implementation note:** there's no `pending_verification` state actually enforced today.
+`POST /auth/verify-email` (built) flips `email_verified` to true on redemption, but nothing gates
+login or any other endpoint on it — `POST /auth/register` leaves the account immediately usable
+(`email_verified=False`, but login doesn't check it) rather than blocking it in limbo, and
+redeeming the token afterward doesn't unlock anything new either. `pending_verification`/`active`
+remain conceptual, not enforced, states — a deliberate scope decision, not a gap to fix
+incidentally here. The one gate that *is* enforced is `is_active` (→ `disabled`), checked in
+`_authenticate_password` (`backend/app/routers/auth.py`). No new column was added for either flag —
 `users.is_active`/`email_verified` (already migrated, §5) are enough to approximate the state
-machine until the verification flow exists to justify a dedicated state column.
+machine until a real reason to enforce it exists.
 
 ### Frontend integration
 
@@ -341,11 +385,13 @@ startup, to avoid concurrent-migration races when multiple replicas boot at once
 
 ### Core tables
 
-The `users`/`auth_identities`/`refresh_tokens`/`roles`/`permissions`/`role_permissions`/
-`user_roles`/`audit_log` tables below are SQLAlchemy models
-(`backend/app/models/{user,rbac,audit}.py`) with a generated migration
-(`alembic/versions/0e452124ee78_add_uac_tables.py`) — schema is done; the RBAC-enforcement *code*
-that uses these tables is not (§3). `orders`/`order_items` are intentionally **not yet
+The `users`/`auth_identities`/`refresh_tokens`/`verification_tokens`/`roles`/`permissions`/
+`role_permissions`/`user_roles`/`audit_log` tables below are SQLAlchemy models
+(`backend/app/models/{user,verification_token,rbac,audit}.py`) with generated migrations
+(`0e452124ee78_add_uac_tables.py` for the first eight, `ceec9dedc42b_add_verification_tokens_table.py`
+for `verification_tokens`) — schema is done; the RBAC-enforcement *code* that uses these tables is
+not (§3), and the `password-reset` endpoints that would write/consume `verification_tokens` rows
+alongside `register`/`verify-email` aren't either (§1). `orders`/`order_items` are intentionally **not yet
 implemented** — that part of the schema needs its plan refined before implementation (open
 questions: import-time dedup key, whether `order_number` is unique per-user or globally, final
 shape of `tracking_numbers`) — so they're listed below as design-only, matching everything else
@@ -362,6 +408,10 @@ auth_identities    id (uuid), user_id FK (cascade), provider (check: 'password'|
 
 refresh_tokens     id (uuid), user_id FK (cascade), token_hash (unique), expires_at,
                    revoked_at, user_agent, ip_address (inet), created_at
+
+verification_tokens id (uuid), user_id FK (cascade, indexed), token_hash (unique),
+                   purpose (check: 'email_verify'|'password_reset'), expires_at,
+                   consumed_at, created_at
 
 roles              id (uuid), name (unique), description
 permissions        id (uuid), resource, action              — unique(resource, action)
@@ -395,13 +445,13 @@ audit_log          id (uuid), actor_user_id FK (set null, indexed), action, targ
 - The `citext` extension required by `users.email` (above) is provisioned by
   `database/init/001-extensions.sql`, baked into the custom Postgres image (§6) and applied once
   at first container init — not run per-migration.
-- Two Alembic revisions exist: `be408b09e448_baseline_no_models_yet` (empty baseline) and
-  `0e452124ee78_add_uac_tables` (the eight built tables above — everything except `orders`/
-  `order_items`, which are pending plan refinement). `upgrade head` / `downgrade -1` /
-  `upgrade head` were exercised against the dev Postgres container and `alembic check` shows no
-  drift; `backend/tests/test_models.py` additionally asserts schema shape (PK/FK/unique/check
-  constraints, cascade rules, index shapes) directly against `Base.metadata`/`__table__` with no
-  live DB required, for fast CI feedback.
+- Three Alembic revisions exist: `be408b09e448_baseline_no_models_yet` (empty baseline),
+  `0e452124ee78_add_uac_tables` (the eight tables above except `orders`/`order_items`, which are
+  pending plan refinement), and `ceec9dedc42b_add_verification_tokens_table`. Each was exercised
+  `upgrade head` / `downgrade -1` / `upgrade head` against the dev Postgres container and
+  `alembic check` shows no drift; `backend/tests/test_models.py` additionally asserts schema shape
+  (PK/FK/unique/check constraints, cascade rules, index shapes) directly against
+  `Base.metadata`/`__table__` with no live DB required, for fast CI feedback.
 - `AuditLog.metadata_` is deliberately misspelled relative to the DB column: SQLAlchemy's
   `Declarative` base reserves the `metadata` attribute name for the class's own `MetaData` object,
   so the Python attribute is `metadata_` while `mapped_column("metadata", JSONB)` keeps the actual
@@ -435,7 +485,11 @@ audit_log          id (uuid), actor_user_id FK (set null, indexed), action, targ
 - **`worker` image** [not yet built]: same codebase/base image as `backend`, different entrypoint —
   processes background jobs (CSV import parsing, email sending) off a queue, so a large upload
   never blocks a request-handling process. Keeping the same base image avoids dependency drift
-  between the two.
+  between the two. Transactional email (verification/reset) doesn't wait for this: it sends inline
+  via FastAPI `BackgroundTasks` today (§1 "Email delivery"), and the `EmailSender` protocol is the
+  seam to move it onto the queue later — a queue-backed sender drops in with no call-site changes.
+  The SMTP password uses the same Docker-secret-file convention as `POSTGRES_PASSWORD`
+  (`secrets/smtp_password_{staging,prod}.txt`, mounted as `SMTP_PASSWORD_FILE`).
 - **`proxy` image** [built, `proxy/Dockerfile`]: Wolfi/Chainguard Nginx (same base rationale as
   `backend`/`database`), doubling as the frontend static host and the reverse proxy in front of
   the API — **not** a Python container. Two build targets: `dev` reverse-proxies `/` to a live
@@ -545,6 +599,9 @@ lock the project out of moving to Cloud Run/ECS later without a rewrite.
    both live as a genuine requirement rather than a fallback?
 2. MFA for superuser accounts: mandatory at launch, or phased in after basic auth ships?
 3. Job queue choice for the `worker` image — Celery (mature, heavier) vs RQ (simpler, Redis-only)?
+   Lower-stakes now: transactional email already sends inline via `BackgroundTasks` behind the
+   `EmailSender` protocol (§1), so the queue only gates retrying failed sends, bulk/high-volume
+   email, and offloading CSV-import parsing.
 4. Do we need org/team-scoped sharing of order data in the medium term? It doesn't change §1–3
    much now, but affects whether RBAC roles should be scoped per-resource sooner rather than later.
 5. `orders`/`order_items` schema (§5) needs its plan refined before implementation: what's the

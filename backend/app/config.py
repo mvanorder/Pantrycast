@@ -2,16 +2,23 @@
 
 import logging
 from datetime import timedelta
+from email.utils import parseaddr
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from pydantic import SecretStr, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
 _ENV_FILE = Path(__file__).resolve().parent.parent / ".env"  # backend/.env
+
+# Hosts for which SMTP_SECURITY=plaintext is tolerated — a local dev catcher
+# (Mailpit, aiosmtpd) never leaves the machine/compose network. Anything else
+# on plaintext would put verification/reset tokens on the wire in the clear.
+_LOCAL_SMTP_HOSTS = {"localhost", "127.0.0.1", "::1", "mailpit"}
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +110,44 @@ class Settings(BaseSettings):
     jwt_access_token_ttl_minutes: int = 15
     jwt_refresh_token_ttl_days: int = 30
 
+    # Outgoing email (uac-design.md §1 "Password handling"). With SMTP_HOST
+    # unset the app falls back to a console sender that logs instead of
+    # sending — zero-setup local dev/tests, same spirit as the ephemeral JWT
+    # keypair above. SMTP_PASSWORD/_FILE is the same SecretStr + secret-file
+    # dual pattern as POSTGRES_PASSWORD.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_password_file: str | None = None
+    smtp_security: Literal["starttls", "tls", "plaintext"] = "starttls"
+    email_from: str = "Shopping Analysis <no-reply@localhost>"
+    # Public base URL the verification/reset links point at — a frontend page
+    # (the proxy origin in dev), not the API endpoint.
+    email_base_url: str = "http://localhost:8080"
+    email_backend: Literal["auto", "smtp", "console"] = "auto"
+    verification_token_ttl_hours: int = Field(default=24, gt=0)
+
+    @field_validator(
+        "smtp_host", "smtp_user", "smtp_password", "smtp_password_file", mode="before"
+    )
+    @classmethod
+    def _blank_to_none(cls, value: object) -> object:
+        """Treat a blank/whitespace-only optional SMTP string as unset.
+
+        ``.env`` templates ship keys like ``SMTP_HOST=`` with an empty value;
+        without this an empty string would read as "configured" and slip past
+        the ``is None`` / truthiness checks below.
+
+        :param value: The raw field value from the environment or ``.env``.
+        :type value: object
+        :returns: ``None`` for an empty/whitespace string, else ``value`` as-is.
+        :rtype: object
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @model_validator(mode="after")
     def _validate_jwt_key_pairing(self) -> "Settings":
         """Reject a half-configured JWT keypair rather than silently mismatching it.
@@ -152,6 +197,90 @@ class Settings(BaseSettings):
                     f"got: {name!r}"
                 )
         return self
+
+    @model_validator(mode="after")
+    def _validate_email_config(self) -> "Settings":
+        """Reject a half- or mis-configured email setup at startup, not on the first send.
+
+        A background email send logs and swallows failures (see
+        ``app.mailer.delivery``), so a silently broken config would make email
+        verification / password reset fail with only a log line. Catch the
+        knowable cases here instead, in the spirit of
+        :meth:`_validate_jwt_key_pairing`. Reachability of a *given* host can't
+        be checked here — only that the config is internally coherent.
+
+        :raises ValueError: If ``EMAIL_FROM`` has no address; if
+            ``EMAIL_BASE_URL`` isn't ``http(s)``; if both ``SMTP_PASSWORD`` and
+            ``SMTP_PASSWORD_FILE`` are set; if ``EMAIL_BACKEND=smtp`` without an
+            ``SMTP_HOST``; or, once SMTP is in use, if the ``SMTP_USER`` /
+            ``SMTP_PASSWORD[_FILE]`` pair is half-configured, if
+            ``SMTP_PASSWORD_FILE`` names a missing file, or if
+            ``SMTP_SECURITY=plaintext`` is used with a non-local ``SMTP_HOST``
+            or with credentials.
+        :returns: ``self``, unchanged, once validated.
+        :rtype: Settings
+        """
+        if "@" not in parseaddr(self.email_from)[1]:
+            raise ValueError(f"EMAIL_FROM is not a valid address: {self.email_from!r}")
+        if not self.email_base_url.startswith(("http://", "https://")):
+            raise ValueError(f"EMAIL_BASE_URL must be an http(s) URL: {self.email_base_url!r}")
+        if self.smtp_password and self.smtp_password_file:
+            raise ValueError("Set SMTP_PASSWORD or SMTP_PASSWORD_FILE, not both.")
+        if self.email_backend == "smtp" and not self.smtp_host:
+            raise ValueError("EMAIL_BACKEND=smtp requires SMTP_HOST to be set.")
+
+        # The rest only matters when mail actually goes over SMTP — blanking
+        # SMTP_HOST while leaving a stray SMTP_USER shouldn't fail the boot.
+        if self.email_backend == "console" or not self.smtp_host:
+            return self
+
+        has_user = bool(self.smtp_user)
+        has_password = bool(self.smtp_password or self.smtp_password_file)
+        if has_user != has_password:
+            raise ValueError(
+                "Set both SMTP_USER and SMTP_PASSWORD[_FILE] (an authenticated relay) "
+                "or neither (an unauthenticated relay)."
+            )
+        if self.smtp_security == "plaintext":
+            if self.smtp_host not in _LOCAL_SMTP_HOSTS:
+                raise ValueError(
+                    "SMTP_SECURITY=plaintext is only allowed for a local relay "
+                    f"({', '.join(sorted(_LOCAL_SMTP_HOSTS))}) — otherwise the message, "
+                    "including its verification/reset token, crosses the network unencrypted."
+                )
+            if has_password:
+                raise ValueError(
+                    "SMTP_SECURITY=plaintext with credentials would send the SMTP password "
+                    "in the clear even to a local relay — use starttls/tls or drop the credentials."
+                )
+        if self.smtp_password_file and not Path(self.smtp_password_file).exists():
+            raise ValueError(f"Could not read SMTP_PASSWORD_FILE: {self.smtp_password_file}")
+        return self
+
+    @property
+    def smtp_password_value(self) -> str | None:
+        """Get the SMTP password, or ``None`` if the sender needs no auth.
+
+        :raises ValueError: If ``SMTP_PASSWORD_FILE`` is set but the file it
+            names doesn't exist.
+        :returns: The password from ``SMTP_PASSWORD``, then
+            ``SMTP_PASSWORD_FILE``, else ``None``.
+        :rtype: str | None
+        """
+        if self.smtp_password:
+            return self.smtp_password.get_secret_value()
+        if self.smtp_password_file:
+            return _read_required_file(self.smtp_password_file, "SMTP_PASSWORD_FILE")
+        return None
+
+    @property
+    def verification_token_ttl(self) -> timedelta:
+        """Get how long an issued email-verification / password-reset token stays valid.
+
+        :returns: The verification token lifetime.
+        :rtype: timedelta
+        """
+        return timedelta(hours=self.verification_token_ttl_hours)
 
     @property
     def _db_password(self) -> str:

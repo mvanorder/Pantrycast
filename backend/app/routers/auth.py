@@ -1,10 +1,10 @@
-"""Authentication endpoints: register, login, refresh, logout (uac-design.md §1)."""
+"""Authentication endpoints: register, verify-email, login, refresh, logout (uac-design.md §1)."""
 
 import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings, get_settings
 from app.db import get_db
 from app.dependencies import get_current_user
-from app.models import AuthIdentity, RefreshToken, User
+from app.mailer import EmailSender
+from app.mailer.delivery import send_verification_email
+from app.mailer.factory import get_email_sender
+from app.models import AuthIdentity, RefreshToken, User, VerificationToken
 from app.schemas import (
     LoginRequest,
     LogoutRequest,
@@ -20,6 +23,7 @@ from app.schemas import (
     RegisterRequest,
     RegisterResponse,
     TokenPairResponse,
+    VerifyEmailRequest,
 )
 from app.security import (
     AccessTokenClaims,
@@ -30,6 +34,7 @@ from app.security import (
     upsert_password_identity,
     verify_password,
 )
+from app.tokens import VerificationPurpose, generate_verification_token, hash_verification_token
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +43,8 @@ router = APIRouter()
 _INVALID_CREDENTIALS_DETAIL = "Invalid email or password"
 _EMAIL_ALREADY_REGISTERED_DETAIL = "Email already registered"
 _INVALID_REFRESH_TOKEN_DETAIL = "Invalid or expired refresh token"
+_INVALID_VERIFICATION_TOKEN_DETAIL = "Invalid verification token"
+_VERIFICATION_TOKEN_NOT_ACTIVE_DETAIL = "Verification token has expired or already been used"
 
 
 def _get_client_meta(request: Request) -> tuple[str | None, str | None]:
@@ -149,17 +156,33 @@ async def _authenticate_password(db: AsyncSession, email: str, password: str) ->
     status_code=status.HTTP_201_CREATED,
     summary="Register a new account",
 )
-async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)) -> User:
+async def register(
+    payload: RegisterRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    sender: EmailSender = Depends(get_email_sender),
+) -> User:
     """Create a new user account with a password identity.
 
-    Leaves ``email_verified=False`` but does not block login on it —
-    email verification is out of scope for this pass (uac-design.md §1
-    "Account states"); the account behaves as fully active immediately.
+    Leaves ``email_verified=False`` and does not block login on it
+    (uac-design.md §1 "Account states" — verifying flips the flag but isn't
+    required to use the account). Stages a ``VerificationToken`` and, once
+    the transaction commits, schedules the verification email via
+    ``BackgroundTasks`` — the flag is flipped by redeeming that email's link
+    through ``POST /auth/verify-email``.
 
     :param payload: The registration request body.
     :type payload: RegisterRequest
+    :param background_tasks: Used to schedule the verification email after
+        the response is ready, so a slow SMTP exchange never blocks it.
+    :type background_tasks: BackgroundTasks
     :param db: The database session, injected via dependency.
     :type db: AsyncSession
+    :param settings: Application settings (email base URL, token TTL).
+    :type settings: Settings
+    :param sender: The configured email sender, injected via dependency.
+    :type sender: EmailSender
     :raises HTTPException: 400 if the email is already registered — checked
         up front, and again via the unique-constraint race below (two
         concurrent registrations for the same not-yet-existing email).
@@ -188,8 +211,90 @@ async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db))
         raise HTTPException(status_code=400, detail=_EMAIL_ALREADY_REGISTERED_DETAIL) from exc
 
     await upsert_password_identity(db, user, hash_password(payload.password))
+
+    raw_verification_token = generate_verification_token()
+    db.add(
+        VerificationToken(
+            user_id=user.id,
+            token_hash=hash_verification_token(raw_verification_token),
+            purpose=VerificationPurpose.EMAIL_VERIFY,
+            expires_at=datetime.now(UTC) + settings.verification_token_ttl,
+        )
+    )
     await db.commit()
+
+    background_tasks.add_task(
+        send_verification_email,
+        sender,
+        to_email=user.email,
+        token=raw_verification_token,
+        base_url=settings.email_base_url,
+        ttl=settings.verification_token_ttl,
+    )
     return user
+
+
+@router.post(
+    "/verify-email",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Confirm an email address with a verification token",
+)
+async def verify_email(
+    payload: VerifyEmailRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Consume a single-use email-verification token and flip ``email_verified``.
+
+    Looked up by exact hash equality, filtered on ``purpose='email_verify'``
+    in the same query — a ``password_reset``-purpose token's hash therefore
+    never matches this lookup and is indistinguishable from an unknown token
+    (400), rather than being surfaced as a distinct "wrong purpose" error;
+    this avoids leaking that the token exists at all under a different
+    purpose.
+
+    Row-locked with ``.with_for_update()`` for the same reason as
+    :func:`refresh` — without it, two concurrent requests for the same
+    still-valid token could both read ``consumed_at is None`` before either
+    commits, double-spending a single-use token.
+
+    Does not gate login on ``email_verified`` and does not issue a new
+    session — see uac-design.md §1 "Account states" / the endpoint table.
+
+    :param payload: The verify-email request body.
+    :type payload: VerifyEmailRequest
+    :param db: The database session, injected via dependency.
+    :type db: AsyncSession
+    :raises HTTPException: 400 if the token is unknown, malformed, or
+        belongs to a different purpose; 422 if it's a real token that has
+        already expired or already been consumed.
+    """
+    token_hash = hash_verification_token(payload.token)
+    result = await db.execute(
+        select(VerificationToken)
+        .where(
+            VerificationToken.token_hash == token_hash,
+            VerificationToken.purpose == VerificationPurpose.EMAIL_VERIFY,
+        )
+        .with_for_update()
+    )
+    stored = result.scalar_one_or_none()
+    if stored is None:
+        raise HTTPException(status_code=400, detail=_INVALID_VERIFICATION_TOKEN_DETAIL)
+
+    now = datetime.now(UTC)
+    if stored.consumed_at is not None or stored.expires_at <= now:
+        raise HTTPException(status_code=422, detail=_VERIFICATION_TOKEN_NOT_ACTIVE_DETAIL)
+
+    stored.consumed_at = now
+    user_result = await db.execute(select(User).where(User.id == stored.user_id))
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        # Should be unreachable — verification_tokens.user_id FK CASCADEs on
+        # user deletion, so a row reaching this point has a matching user.
+        raise RuntimeError("verification_tokens.user_id FK guarantees a matching users row")
+
+    user.email_verified = True
+    await db.commit()
 
 
 @router.post("/login", response_model=TokenPairResponse, summary="Log in with email and password")

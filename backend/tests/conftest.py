@@ -4,6 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.db import get_db
+from app.mailer import EmailSender
+from app.mailer.factory import get_email_sender
 from app.main import app
 from tests.fakes import FakeAsyncSession, FakeSession
 
@@ -57,26 +59,32 @@ def db_client_factory() -> Generator[Callable[[bool], TestClient]]:
 
 
 @pytest.fixture
-def session_client_factory() -> Generator[Callable[[FakeSession], TestClient]]:
+def session_client_factory() -> Generator[Callable[..., TestClient]]:
     """Provide a factory for a ``TestClient`` backed by a caller-built ``FakeSession``.
 
     Unlike :func:`db_client_factory` (a plain success/failure toggle for
     ``/health/db``), auth endpoints need a session that tracks queued query
     results, staged inserts, and commit/rollback calls — so the caller
     builds and configures the :class:`~tests.fakes.FakeSession` itself and
-    this fixture just wires it in as ``get_db``.
+    this fixture just wires it in as ``get_db``. An optional ``sender``
+    additionally overrides ``get_email_sender`` — only ``register`` needs
+    this, so every other call site keeps passing just a session.
 
     :returns: A generator yielding a factory that takes a ``FakeSession``
-        and returns a ``TestClient`` using it for every request.
-    :rtype: Generator[Callable[[FakeSession], TestClient]]
+        (and optionally a fake ``EmailSender``) and returns a ``TestClient``
+        using them for every request.
+    :rtype: Generator[Callable[..., TestClient]]
     """
 
-    def _make_client(session: FakeSession) -> TestClient:
+    def _make_client(session: FakeSession, sender: EmailSender | None = None) -> TestClient:
         """Build a ``TestClient`` whose ``get_db`` always yields ``session``.
 
         :param session: The fake session every request should receive.
         :type session: FakeSession
-        :returns: A ``TestClient`` with the dependency override applied.
+        :param sender: A fake email sender to override ``get_email_sender``
+            with, or ``None`` to let the real (console, by default) sender run.
+        :type sender: EmailSender | None
+        :returns: A ``TestClient`` with the dependency override(s) applied.
         :rtype: TestClient
         """
 
@@ -89,7 +97,10 @@ def session_client_factory() -> Generator[Callable[[FakeSession], TestClient]]:
             yield session
 
         app.dependency_overrides[get_db] = _override_get_db
+        if sender is not None:
+            app.dependency_overrides[get_email_sender] = lambda: sender
         return TestClient(app)
 
     yield _make_client
     app.dependency_overrides.pop(get_db, None)
+    app.dependency_overrides.pop(get_email_sender, None)

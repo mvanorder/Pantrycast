@@ -15,6 +15,7 @@ dependencies = [
     "argon2-cffi>=23.1,<25.2",
     "pyjwt[crypto]~=2.13.0",
     "pydantic[email]>=2.13.4",
+    "aiosmtplib~=4.0",
 ]
 
 [project.scripts]
@@ -75,7 +76,10 @@ branch = true
 
 [tool.coverage.report]
 show_missing = true
-exclude_lines = ["pragma: no cover"]
+# `if TYPE_CHECKING:` blocks hold import-only-for-typing statements that never
+# run at runtime (e.g. cross-module ORM relationship forward refs) — excluding
+# them keeps a purely-typing import from counting as a coverage miss.
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
 
 [tool.coverage.html]
 directory = "htmlcov"

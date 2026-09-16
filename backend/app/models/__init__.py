@@ -8,6 +8,7 @@ shared ``MetaData``, which is what Alembic autogenerate (see
 from app.models.audit import AuditLog
 from app.models.rbac import Permission, Role, RolePermission, UserRole
 from app.models.user import AuthIdentity, RefreshToken, User
+from app.models.verification_token import VerificationToken
 
 __all__ = [
     "AuditLog",
@@ -18,4 +19,5 @@ __all__ = [
     "RolePermission",
     "User",
     "UserRole",
+    "VerificationToken",
 ]
