@@ -7,11 +7,15 @@ services:
       context: ./database
     image: pantrycast-db:local
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-pantrycast}
-      POSTGRES_DB: ${POSTGRES_DB:-pantrycast}
       PGDATA: /var/lib/postgresql/data/pgdata
+    # POSTGRES_USER/POSTGRES_DB come from each overlay's env_file, not from
+    # here: an `environment:` entry always outranks `env_file:` for the same
+    # service, so a hardcoded default here would silently override whatever
+    # .env.dev/.env.staging/.env.prod actually set. Read them from the
+    # container's own runtime env instead of interpolating host-side, for the
+    # same reason.
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER:-pantrycast}", "-d", "${POSTGRES_DB:-pantrycast}"]
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
       interval: 10s
       timeout: 5s
       retries: 5
