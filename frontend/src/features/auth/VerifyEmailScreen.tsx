@@ -107,9 +107,12 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   const [status, setStatus] = useState<Status>('verifying');
   const [errorMessage, setErrorMessage] = useState(GENERIC_ERROR);
   // Set only for a transport failure (`ApiError.status === 0`): the request
-  // never reached the server, so the token is definitely still unspent and
-  // retrying is meaningful. Any other error (400/422) would just fail the
-  // same way again.
+  // never reached the server *or* its response never reached us — the
+  // latter means the server may have already redeemed the token even though
+  // this client sees it as unspent, so a retry can occasionally report
+  // "already been used" for a verification that in fact succeeded. Still the
+  // one case worth offering a retry for: any other error (400/422) would
+  // just fail the exact same way again, which this at least won't.
   const [canRetry, setCanRetry] = useState(false);
   // Bumped by the "Try again" button to re-run the effect below without
   // depending on the URL still holding the token — see the `replaceState`
@@ -193,6 +196,21 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   const continueHref = authStatus === 'authenticated' ? '/dashboard' : '/login';
   const continueLabel = authStatus === 'authenticated' ? 'Go to dashboard' : 'Log in';
 
+  // `accessibilityLiveRegion` only reliably announces a *change* to an
+  // already-present region's content — not a region that appears at the
+  // same moment its content does, which is what putting it directly on the
+  // success/error `Outcome` text would do (the verifying → settled
+  // transition unmounts one and mounts the other). So this text node is
+  // mounted unconditionally, from the very first render, empty until there's
+  // something to say — the visible per-status copy below stays as plain,
+  // non-live text so it isn't announced a second time.
+  const announcement =
+    status === 'success'
+      ? 'Email confirmed. Your email address is verified.'
+      : status === 'error'
+        ? `We couldn’t confirm that email. ${errorMessage}`
+        : '';
+
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <ScreenScrollView
@@ -209,6 +227,14 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
           <View style={styles.brand}>
             <BrandMark />
           </View>
+
+          <Text
+            testID="verify-email-announcer"
+            accessibilityLiveRegion="polite"
+            style={styles.srOnly}
+          >
+            {announcement}
+          </Text>
 
           {status === 'verifying' && (
             <View style={styles.section}>
@@ -297,7 +323,6 @@ function Outcome({
       <Text
         variant="bodyMedium"
         style={[styles.message, { color: theme.colors.onSurfaceVariant }]}
-        accessibilityLiveRegion="polite"
       >
         {body}
       </Text>
@@ -373,5 +398,14 @@ const styles = StyleSheet.create({
   },
   actionContent: {
     height: layout.minTouchTarget,
+  },
+  // Present in the accessibility tree (so `accessibilityLiveRegion` can
+  // announce it) but not visible or laid out for sighted users — the
+  // standard "visually hidden" shape.
+  srOnly: {
+    position: 'absolute',
+    width: 1,
+    height: 1,
+    overflow: 'hidden',
   },
 });

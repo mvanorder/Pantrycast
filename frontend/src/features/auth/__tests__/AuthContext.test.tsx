@@ -285,7 +285,10 @@ describe('signOut', () => {
     expect(result.current.user).toBeNull();
   });
 
-  it('still ends the local session when the token store is unreadable', async () => {
+  it('still clears the stored pair and ends the session when reading it first fails', async () => {
+    // A read failure must not skip `clearTokenPair` — otherwise the pair
+    // stays in storage and the *next* app launch restores the very session
+    // this "sign out" claimed to end.
     const { result } = await mountAuth();
 
     mockGetAccessToken.mockRejectedValue(new Error('storage unavailable'));
@@ -294,6 +297,7 @@ describe('signOut', () => {
       await result.current.signOut();
     });
 
+    expect(mockClearTokenPair).toHaveBeenCalled();
     expect(result.current.status).toBe('unauthenticated');
     expect(result.current.user).toBeNull();
   });

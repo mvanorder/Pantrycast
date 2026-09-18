@@ -70,6 +70,30 @@ describe('VerifyEmailScreen', () => {
     expect(mockRouterReplace).toHaveBeenCalledWith('/login');
   });
 
+  it('fills the always-mounted live region once settled, rather than mounting it fresh', async () => {
+    let release!: () => void;
+    const onVerify = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    await renderWithProviders(<VerifyEmailScreen token="a-token" onVerify={onVerify} />);
+
+    // Present and empty from the first render — `accessibilityLiveRegion`
+    // only reliably announces a change to an already-present region, not one
+    // that appears at the same moment as its content.
+    expect(screen.getByTestId('verify-email-announcer').props.children).toBe('');
+
+    await act(async () => {
+      release();
+    });
+
+    expect(screen.getByTestId('verify-email-announcer').props.children).toBe(
+      'Email confirmed. Your email address is verified.',
+    );
+  });
+
   it('sends an already-signed-in visitor to the dashboard on success', async () => {
     mockAuthStatus = 'authenticated';
     const onVerify = jest.fn().mockResolvedValue(undefined);

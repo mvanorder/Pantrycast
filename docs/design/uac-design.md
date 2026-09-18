@@ -250,6 +250,9 @@ machine until a real reason to enforce it exists.
 - No account/profile/settings screen exists.
 - No silent-refresh-on-401 flow (see the 401 bullet under "Error contract" above) — a
   rejected/expired stored access token just forces sign-out today.
+- No resend-verification-email flow, on either side — `register` is the only thing that
+  issues a `VerificationToken`. A user who lands on `/verify-email` with a missing, expired,
+  or already-used token has no in-app way to get a fresh link.
 
 ---
 

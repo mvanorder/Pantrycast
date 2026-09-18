@@ -121,15 +121,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Best effort — a failed revocation still clears the client.
         });
       }
-      await clearTokenPair();
     } catch {
-      // Same invariant as `restore` above: a token-store failure (reading or
-      // clearing) must not stop the local session from ending, or tapping
-      // "Sign out" would silently leave the user looking signed in.
-    } finally {
-      setUser(null);
-      setStatus('unauthenticated');
+      // Reading the stored tokens failed — nothing to revoke server-side,
+      // but `clearTokenPair` below still needs to run regardless: it must
+      // not be skipped just because this step failed first, or the pair
+      // stays in storage and the *next* launch restores the "signed out"
+      // session right back.
     }
+    await clearTokenPair().catch(() => {
+      // Same invariant as `restore` above: a storage failure clearing the
+      // pair must not stop the local session from ending, or tapping
+      // "Sign out" would silently leave the user looking signed in.
+    });
+    setUser(null);
+    setStatus('unauthenticated');
   }, []);
 
   const value = useMemo<AuthContextValue>(
