@@ -1,5 +1,5 @@
 import { apiRequest } from '../../../api/client';
-import { fetchCurrentUser, login, logout, register } from '../api';
+import { fetchCurrentUser, login, logout, register, verifyEmail } from '../api';
 
 jest.mock('../../../api/client', () => ({ apiRequest: jest.fn() }));
 
@@ -90,5 +90,24 @@ describe('logout', () => {
       token: 'access-jwt',
       body: { refresh_token: 'refresh-opaque' },
     });
+  });
+});
+
+describe('verifyEmail', () => {
+  it('POSTs the token to /auth/verify-email', async () => {
+    mockApiRequest.mockResolvedValue(undefined);
+
+    await verifyEmail('a-raw-token');
+
+    expect(mockApiRequest).toHaveBeenCalledWith('/auth/verify-email', {
+      method: 'POST',
+      body: { token: 'a-raw-token' },
+    });
+  });
+
+  it('propagates a rejected request (e.g. expired or already-used token)', async () => {
+    mockApiRequest.mockRejectedValue(new Error('boom'));
+
+    await expect(verifyEmail('stale-token')).rejects.toThrow('boom');
   });
 });

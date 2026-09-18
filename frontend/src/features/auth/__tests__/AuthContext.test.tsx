@@ -108,6 +108,28 @@ describe('AuthProvider startup', () => {
     expect(result.current.status).toBe('unauthenticated');
     expect(result.current.user).toBeNull();
   });
+
+  it('still settles to signed out when the token store itself is unreadable', async () => {
+    // e.g. storage access blocked in an in-app browser. `status` must still
+    // leave `loading` — screens that gate on it (route guards,
+    // VerifyEmailScreen's continue button) would otherwise hang forever.
+    mockGetAccessToken.mockRejectedValue(new Error('storage unavailable'));
+
+    const { result } = await mountAuth();
+
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
+  });
+
+  it('settles to signed out even if clearing the token store also fails', async () => {
+    mockGetAccessToken.mockResolvedValue('stale-jwt');
+    mockFetchCurrentUser.mockRejectedValue(new ApiError(401, 'Invalid or expired access token'));
+    mockClearTokenPair.mockRejectedValue(new Error('storage unavailable'));
+
+    const { result } = await mountAuth();
+
+    expect(result.current.status).toBe('unauthenticated');
+  });
 });
 
 describe('signIn', () => {
@@ -243,6 +265,41 @@ describe('signOut', () => {
     expect(mockLogout).not.toHaveBeenCalled();
     expect(mockClearTokenPair).toHaveBeenCalled();
     expect(result.current.status).toBe('unauthenticated');
+  });
+
+  it('still ends the local session when clearing the token store fails', async () => {
+    // Otherwise tapping "Sign out" would leave the user looking signed in —
+    // the same invariant `restore` is hardened for above.
+    mockGetAccessToken.mockResolvedValue('access-jwt');
+    mockGetRefreshToken.mockResolvedValue('refresh-opaque');
+    mockFetchCurrentUser.mockResolvedValue(profile);
+    mockClearTokenPair.mockRejectedValue(new Error('storage unavailable'));
+
+    const { result } = await mountAuth();
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
+  });
+
+  it('still clears the stored pair and ends the session when reading it first fails', async () => {
+    // A read failure must not skip `clearTokenPair` — otherwise the pair
+    // stays in storage and the *next* app launch restores the very session
+    // this "sign out" claimed to end.
+    const { result } = await mountAuth();
+
+    mockGetAccessToken.mockRejectedValue(new Error('storage unavailable'));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(mockClearTokenPair).toHaveBeenCalled();
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
   });
 });
 

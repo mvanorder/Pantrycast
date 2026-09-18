@@ -7,9 +7,9 @@ built. `orders`/`order_items` are deliberately excluded pending plan refinement 
 `create-superuser` bootstrap CLI (§2) is built, including argon2 password hashing. The core
 password-auth HTTP loop is also now built and verified end-to-end against a real Postgres instance:
 `register`/`login`/`refresh`/`logout`/`logout-all`, JWT issuance/verification, and the
-`get_current_user` dependency (§1 "Authentication endpoints"). On the frontend, login/session
-restore/route-guarding are built (§1 "Frontend integration"); signup, account management, and
-silent token refresh on 401 are not. The **email sender** that email
+`get_current_user` dependency (§1 "Authentication endpoints"). On the frontend, login/signup/session
+restore/route-guarding and email-verification redemption are built (§1 "Frontend integration");
+account management and silent token refresh on 401 are not. The **email sender** that email
 verification and password reset were blocked on now exists: a provider-agnostic SMTP sender
 behind an `EmailSender` protocol, a console fallback for local dev, message templates, the
 `verification_tokens` table + migration, and token generate/hash helpers (`backend/app/mailer/`,
@@ -222,27 +222,37 @@ machine until a real reason to enforce it exists.
 ### Frontend integration
 
 **Built** (`frontend/src/features/auth/`, `frontend/src/app/login.tsx`,
+`frontend/src/app/signup.tsx`, `frontend/src/app/verify-email.tsx`,
 `frontend/src/app/dashboard.tsx`, `frontend/src/app/_layout.tsx`):
 
 - `frontend/src/api/client.ts` / `frontend/src/api/config.ts` — a thin `fetch`-based JSON client
   (`apiRequest<T>()`), base URL from `EXPO_PUBLIC_API_URL`.
-- `frontend/src/features/auth/api.ts` — `login()` → `POST /auth/login`, `fetchCurrentUser()` →
-  `GET /users/me`, `logout()` → `POST /auth/logout`.
+- `frontend/src/features/auth/api.ts` — `login()` → `POST /auth/login`, `register()` →
+  `POST /auth/register`, `fetchCurrentUser()` → `GET /users/me`, `logout()` →
+  `POST /auth/logout`, `verifyEmail()` → `POST /auth/verify-email`.
 - `frontend/src/features/auth/AuthContext.tsx` — `AuthProvider`/`useAuth()`, tracking
   `status: 'loading' | 'authenticated' | 'unauthenticated'`. Restores the session on app start from
   a stored access token via `fetchCurrentUser`; mounted around the whole app in `_layout.tsx`.
-- `frontend/src/app/login.tsx` (route `/login`) and route-guarding on
-  `frontend/src/app/dashboard.tsx`, which redirects unauthenticated visitors to `/`.
+  `signUp()` chains `register()` with a `signIn()` on the same credentials, since `register` issues
+  no token pair of its own.
+- `frontend/src/app/login.tsx` (route `/login`), `frontend/src/app/signup.tsx` (route `/signup`),
+  and route-guarding on `frontend/src/app/dashboard.tsx`, which redirects unauthenticated visitors
+  to `/`.
+- `frontend/src/app/verify-email.tsx` (route `/verify-email`, matching
+  `render_verification_email`'s `{EMAIL_BASE_URL}/verify-email?token=…` link) — redeems the
+  `?token=` query param via `verifyEmail()` automatically on mount, no session required either way.
+  Reachable signed in or signed out; "continue" goes to `/dashboard` or `/login` accordingly.
 - Token storage: see the correction under "Transport" above — actual storage is
   `AsyncStorage` on every platform today, not the SecureStore/web-TBD split originally designed.
 
 **Known gaps**, called out explicitly so they don't read as accidental omissions:
 
-- No signup/registration screen exists, even though `POST /auth/register` is built server-side —
-  there is currently no way to create an account through the app itself.
 - No account/profile/settings screen exists.
 - No silent-refresh-on-401 flow (see the 401 bullet under "Error contract" above) — a
   rejected/expired stored access token just forces sign-out today.
+- No resend-verification-email flow, on either side — `register` is the only thing that
+  issues a `VerificationToken`. A user who lands on `/verify-email` with a missing, expired,
+  or already-used token has no in-app way to get a fresh link.
 
 ---
 

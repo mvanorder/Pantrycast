@@ -63,20 +63,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function restore(): Promise<void> {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        if (!cancelled) setStatus('unauthenticated');
-        return;
-      }
       try {
+        const accessToken = await getAccessToken();
+        if (!accessToken) {
+          if (!cancelled) setStatus('unauthenticated');
+          return;
+        }
         const profile = await fetchCurrentUser(accessToken);
         if (cancelled) return;
         setUser(profile);
         setStatus('authenticated');
       } catch {
-        // Expired/invalid stored token, or the server is unreachable. Drop the
-        // stored pair and start signed out.
-        await clearTokenPair();
+        // Expired/invalid stored token, the server unreachable, or the token
+        // store itself unreadable (e.g. storage access blocked in an in-app
+        // browser) — every failure here must still resolve `status`, since
+        // screens elsewhere (route guards, `VerifyEmailScreen`'s continue
+        // button) wait on it leaving `loading` and would otherwise hang
+        // forever. Drop the stored pair and start signed out.
+        await clearTokenPair().catch(() => {
+          // Clearing is best-effort too — a storage failure here shouldn't
+          // stop `status` from settling either.
+        });
         if (!cancelled) setStatus('unauthenticated');
       }
     }
@@ -104,16 +111,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    const [accessToken, refreshToken] = await Promise.all([
-      getAccessToken(),
-      getRefreshToken(),
-    ]);
-    if (accessToken && refreshToken) {
-      await logout(accessToken, refreshToken).catch(() => {
-        // Best effort — a failed revocation still clears the client.
-      });
+    try {
+      const [accessToken, refreshToken] = await Promise.all([
+        getAccessToken(),
+        getRefreshToken(),
+      ]);
+      if (accessToken && refreshToken) {
+        await logout(accessToken, refreshToken).catch(() => {
+          // Best effort — a failed revocation still clears the client.
+        });
+      }
+    } catch {
+      // Reading the stored tokens failed — nothing to revoke server-side,
+      // but `clearTokenPair` below still needs to run regardless: it must
+      // not be skipped just because this step failed first, or the pair
+      // stays in storage and the *next* launch restores the "signed out"
+      // session right back.
     }
-    await clearTokenPair();
+    await clearTokenPair().catch(() => {
+      // Same invariant as `restore` above: a storage failure clearing the
+      // pair must not stop the local session from ending, or tapping
+      // "Sign out" would silently leave the user looking signed in.
+    });
     setUser(null);
     setStatus('unauthenticated');
   }, []);
