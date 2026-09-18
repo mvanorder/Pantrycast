@@ -33,7 +33,7 @@ describe('VerifyEmailScreen', () => {
 
     expect(
       await screen.findByText(
-        "This verification link is missing its token. Check that you copied the full link from your email.",
+        'This link is missing its verification token — or your email is already confirmed and this page was just reloaded.',
       ),
     ).toBeOnTheScreen();
     expect(onVerify).not.toHaveBeenCalled();

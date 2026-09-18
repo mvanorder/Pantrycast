@@ -13,8 +13,14 @@ import { heading, layout, radius, spacing, useAppTheme, useResponsive } from '@/
 import { useAuth } from './AuthContext';
 
 const GENERIC_ERROR = 'Something went wrong confirming your email. Please try again.';
+// Deliberately doesn't say "check that you copied the full link": this also
+// fires on a plain page refresh after a successful confirm, since the token
+// is stripped from the URL once read (see the effect below) — a copy-paste
+// mistake is only one of two causes here, not the likely one. Doesn't point
+// at a "request a new link" action either, since there's no resend flow yet
+// (uac-design.md §1) — only `register` issues a verification token today.
 const MISSING_TOKEN_ERROR =
-  "This verification link is missing its token. Check that you copied the full link from your email.";
+  "This link is missing its verification token — or your email is already confirmed and this page was just reloaded.";
 
 type Status = 'verifying' | 'success' | 'error';
 
@@ -69,8 +75,10 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
     if (token && Platform.OS === 'web' && typeof window !== 'undefined') {
       // The token is spent as soon as it's captured in this closure — strip
       // it from the URL now, before it's sent as the `Referer` on the POST
-      // below, so it doesn't linger in browser history or (same-origin,
-      // behind the proxy) nginx's access log.
+      // below (same-origin, behind the proxy), and so it doesn't linger in
+      // browser history. This does *not* keep it out of nginx's access log:
+      // the initial `GET /verify-email?token=…` for this very page is
+      // already logged server-side before any of this JS runs.
       window.history.replaceState(null, '', window.location.pathname);
     }
 
