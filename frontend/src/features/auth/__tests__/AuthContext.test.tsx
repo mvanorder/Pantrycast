@@ -108,6 +108,28 @@ describe('AuthProvider startup', () => {
     expect(result.current.status).toBe('unauthenticated');
     expect(result.current.user).toBeNull();
   });
+
+  it('still settles to signed out when the token store itself is unreadable', async () => {
+    // e.g. storage access blocked in an in-app browser. `status` must still
+    // leave `loading` — screens that gate on it (route guards,
+    // VerifyEmailScreen's continue button) would otherwise hang forever.
+    mockGetAccessToken.mockRejectedValue(new Error('storage unavailable'));
+
+    const { result } = await mountAuth();
+
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
+  });
+
+  it('settles to signed out even if clearing the token store also fails', async () => {
+    mockGetAccessToken.mockResolvedValue('stale-jwt');
+    mockFetchCurrentUser.mockRejectedValue(new ApiError(401, 'Invalid or expired access token'));
+    mockClearTokenPair.mockRejectedValue(new Error('storage unavailable'));
+
+    const { result } = await mountAuth();
+
+    expect(result.current.status).toBe('unauthenticated');
+  });
 });
 
 describe('signIn', () => {

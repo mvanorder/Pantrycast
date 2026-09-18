@@ -63,20 +63,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     async function restore(): Promise<void> {
-      const accessToken = await getAccessToken();
-      if (!accessToken) {
-        if (!cancelled) setStatus('unauthenticated');
-        return;
-      }
       try {
+        const accessToken = await getAccessToken();
+        if (!accessToken) {
+          if (!cancelled) setStatus('unauthenticated');
+          return;
+        }
         const profile = await fetchCurrentUser(accessToken);
         if (cancelled) return;
         setUser(profile);
         setStatus('authenticated');
       } catch {
-        // Expired/invalid stored token, or the server is unreachable. Drop the
-        // stored pair and start signed out.
-        await clearTokenPair();
+        // Expired/invalid stored token, the server unreachable, or the token
+        // store itself unreadable (e.g. storage access blocked in an in-app
+        // browser) — every failure here must still resolve `status`, since
+        // screens elsewhere (route guards, `VerifyEmailScreen`'s continue
+        // button) wait on it leaving `loading` and would otherwise hang
+        // forever. Drop the stored pair and start signed out.
+        await clearTokenPair().catch(() => {
+          // Clearing is best-effort too — a storage failure here shouldn't
+          // stop `status` from settling either.
+        });
         if (!cancelled) setStatus('unauthenticated');
       }
     }

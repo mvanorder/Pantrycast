@@ -13,7 +13,10 @@ export default function VerifyEmail() {
   return (
     <>
       <Stack.Screen options={{ title: 'Verify email' }} />
-      <VerifyEmailScreen token={token} onVerify={handleVerify} />
+      {/* Keyed on `token`: a second emailed link opened into the same tab
+          should remount fresh rather than reuse the previous attempt's
+          settled state — see VerifyEmailScreen's docstring. */}
+      <VerifyEmailScreen key={token} token={token} onVerify={handleVerify} />
     </>
   );
 }

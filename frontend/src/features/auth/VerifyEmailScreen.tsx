@@ -1,13 +1,14 @@
 import { useEffect, useState, type ComponentProps } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Surface, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
 import { BrandMark } from '@/components/BrandMark';
 import { ScreenScrollView } from '@/components/ScreenScrollView';
-import { heading, radius, spacing, useAppTheme } from '@/theme';
+import { heading, layout, radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
 import { useAuth } from './AuthContext';
 
@@ -40,6 +41,11 @@ type VerifyEmailScreenProps = {
  * redeems the token automatically on mount rather than asking for another
  * tap.
  *
+ * The `/verify-email` route mounts this keyed on `token`, so opening a second
+ * emailed link into the same tab remounts fresh (a clean `verifying` state)
+ * rather than layering a new in-flight redemption under the previous
+ * attempt's leftover success/error copy.
+ *
  * Reachable signed in or signed out — verifying an email neither requires
  * nor starts a session (uac-design.md §1 "Account states") — so the
  * "continue" action goes to the dashboard for an already-signed-in visitor
@@ -47,6 +53,8 @@ type VerifyEmailScreenProps = {
  */
 export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const { gutter } = useResponsive();
   const { status: authStatus } = useAuth();
 
   // Always starts `verifying`, even for a missing token: the static web
@@ -58,10 +66,18 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   const [errorMessage, setErrorMessage] = useState(GENERIC_ERROR);
 
   useEffect(() => {
+    if (token && Platform.OS === 'web' && typeof window !== 'undefined') {
+      // The token is spent as soon as it's captured in this closure — strip
+      // it from the URL now, before it's sent as the `Referer` on the POST
+      // below, so it doesn't linger in browser history or (same-origin,
+      // behind the proxy) nginx's access log.
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
     // A missing token is folded into the same async settling path as a
     // rejected redemption (rather than branching to a synchronous setState
     // here) so every route to the `error` state goes through a microtask,
-    // same as a real `onVerify` rejection — see the `status` comment above.
+    // same as a real `onVerify` rejection.
     const redemption = token
       ? onVerify?.(token)
       : Promise.reject(new Error(MISSING_TOKEN_ERROR));
@@ -85,7 +101,8 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
       cancelled = true;
     };
     // A verification token is single-use: redeem once for the token this
-    // screen mounted with, never again on an unrelated re-render.
+    // screen instance mounted with (the route remounts a fresh instance per
+    // token — see the component docstring — so this never actually re-runs).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -100,7 +117,13 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <ScreenScrollView
-        bodyStyle={[styles.scrollContent, { paddingVertical: spacing.xl, paddingHorizontal: spacing.lg }]}
+        bodyStyle={[
+          styles.scrollContent,
+          {
+            paddingVertical: spacing.xl,
+            paddingHorizontal: gutter + Math.max(insets.left, insets.right),
+          },
+        ]}
         showsVerticalScrollIndicator={false}
       >
         <Surface elevation={1} style={styles.card}>
@@ -254,6 +277,6 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   actionContent: {
-    height: 48,
+    height: layout.minTouchTarget,
   },
 });
