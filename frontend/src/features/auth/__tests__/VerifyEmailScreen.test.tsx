@@ -83,11 +83,43 @@ describe('VerifyEmailScreen', () => {
     expect(mockRouterReplace).toHaveBeenCalledWith('/dashboard');
   });
 
-  it('surfaces the API message when the token is expired or already used', async () => {
+  it('surfaces the API message when the token is expired or already used, with no retry action', async () => {
     const onVerify = jest.fn().mockRejectedValue(new ApiError(422, 'This link has expired.'));
     await renderWithProviders(<VerifyEmailScreen token="stale-token" onVerify={onVerify} />);
 
     await waitFor(() => expect(screen.getByText('This link has expired.')).toBeOnTheScreen());
+    expect(screen.queryByLabelText('Try again')).not.toBeOnTheScreen();
+  });
+
+  it('offers a working retry when the request never reached the server', async () => {
+    let releaseRetry!: () => void;
+    const onVerify = jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError(0, "Couldn't reach the server. Check your connection and try again."))
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseRetry = resolve;
+          }),
+      );
+    await renderWithProviders(<VerifyEmailScreen token="a-token" onVerify={onVerify} />);
+
+    await waitFor(() => expect(screen.getByLabelText('Try again')).toBeOnTheScreen());
+    expect(onVerify).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Try again'));
+    });
+
+    // Back to `verifying` immediately, before the retried request settles.
+    expect(screen.getByText('Confirming your email…')).toBeOnTheScreen();
+    expect(onVerify).toHaveBeenLastCalledWith('a-token');
+    expect(onVerify).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      releaseRetry();
+    });
+    expect(screen.getByText('Email confirmed')).toBeOnTheScreen();
   });
 
   it('falls back to a generic message for a non-API failure', async () => {

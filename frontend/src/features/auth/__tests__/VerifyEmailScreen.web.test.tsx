@@ -27,13 +27,19 @@ describe('VerifyEmailScreen on web', () => {
   });
 
   it('strips the token from the URL once redemption starts, so it never lingers in history or a Referer header', async () => {
-    window.history.replaceState(null, '', '/verify-email?token=a-token');
+    // expo-router's web history layer keeps its own `{ id }` bookkeeping in
+    // `history.state`; a real navigation here would have set something like
+    // this rather than `null`.
+    const routerState = { id: 'expo-router-entry-id' };
+    window.history.replaceState(routerState, '', '/verify-email?token=a-token');
     const replaceStateSpy = jest.spyOn(window.history, 'replaceState');
     const onVerify = jest.fn().mockResolvedValue(undefined);
 
     await renderWithProviders(<VerifyEmailScreen token="a-token" onVerify={onVerify} />);
 
-    expect(replaceStateSpy).toHaveBeenCalledWith(null, '', '/verify-email');
+    // Passes the existing state through rather than `null`, so expo-router's
+    // bookkeeping for this history entry survives the URL change.
+    expect(replaceStateSpy).toHaveBeenCalledWith(routerState, '', '/verify-email');
 
     replaceStateSpy.mockRestore();
   });

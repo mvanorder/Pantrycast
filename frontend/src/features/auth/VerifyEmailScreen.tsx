@@ -70,6 +70,15 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   // way a redemption failure does.
   const [status, setStatus] = useState<Status>('verifying');
   const [errorMessage, setErrorMessage] = useState(GENERIC_ERROR);
+  // Set only for a transport failure (`ApiError.status === 0`): the request
+  // never reached the server, so the token is definitely still unspent and
+  // retrying is meaningful. Any other error (400/422) would just fail the
+  // same way again.
+  const [canRetry, setCanRetry] = useState(false);
+  // Bumped by the "Try again" button to re-run the effect below without
+  // depending on the URL still holding the token — see the `replaceState`
+  // comment for why that dependency would be unsafe.
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     if (token && Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -79,13 +88,22 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
       // browser history. This does *not* keep it out of nginx's access log:
       // the initial `GET /verify-email?token=…` for this very page is
       // already logged server-side before any of this JS runs.
-      window.history.replaceState(null, '', window.location.pathname);
+      //
+      // Passes the *existing* `history.state` through rather than `null`:
+      // expo-router's web history layer stores its own `{ id }` bookkeeping
+      // there (`expo-router/build/fork/createMemoryHistory.js`), and
+      // clobbering it would corrupt back/forward navigation on this entry.
+      // We only want to change the URL, not the state object.
+      window.history.replaceState(window.history.state, '', window.location.pathname);
     }
 
     // A missing token is folded into the same async settling path as a
     // rejected redemption (rather than branching to a synchronous setState
     // here) so every route to the `error` state goes through a microtask,
-    // same as a real `onVerify` rejection.
+    // same as a real `onVerify` rejection. Retrying (`attempt`) reuses this
+    // same `token` from the closure rather than re-reading the URL, which is
+    // exactly why stripping the URL up front is safe: recovery from a failed
+    // attempt never depends on the token still being there.
     const redemption = token
       ? onVerify?.(token)
       : Promise.reject(new Error(MISSING_TOKEN_ERROR));
@@ -103,16 +121,22 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
         setErrorMessage(
           !token ? MISSING_TOKEN_ERROR : error instanceof ApiError ? error.message : GENERIC_ERROR,
         );
+        setCanRetry(!!token && error instanceof ApiError && error.status === 0);
         setStatus('error');
       });
     return () => {
       cancelled = true;
     };
-    // A verification token is single-use: redeem once for the token this
-    // screen instance mounted with (the route remounts a fresh instance per
-    // token — see the component docstring — so this never actually re-runs).
+    // A verification token is single-use per *server-accepted* attempt, but
+    // this effect itself may legitimately re-run for the same token — a
+    // retry after a transport failure never reached the server at all.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, attempt]);
+
+  const retry = () => {
+    setStatus('verifying');
+    setAttempt((current) => current + 1);
+  };
 
   // While the stored session is still being restored, `authStatus` isn't
   // "unauthenticated" yet — just unknown — so the continue action stays
@@ -174,6 +198,7 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
               continueHref={continueHref}
               continueLabel={continueLabel}
               continueDisabled={!authSettled}
+              retryAction={canRetry ? retry : undefined}
             />
           )}
         </Surface>
@@ -191,6 +216,8 @@ type OutcomeProps = {
   continueHref: '/dashboard' | '/login';
   continueLabel: string;
   continueDisabled: boolean;
+  /** Shown as a second, primary action above "continue" — only for a retryable failure. */
+  retryAction?: () => void;
 };
 
 /** The settled (`success` or `error`) state of {@link VerifyEmailScreen} — same shape, different art/copy. */
@@ -203,6 +230,7 @@ function Outcome({
   continueHref,
   continueLabel,
   continueDisabled,
+  retryAction,
 }: OutcomeProps) {
   const theme = useAppTheme();
   const router = useRouter();
@@ -226,8 +254,20 @@ function Outcome({
       >
         {body}
       </Text>
+      {retryAction && (
+        <Button
+          mode="contained"
+          onPress={retryAction}
+          style={styles.action}
+          contentStyle={styles.actionContent}
+          accessibilityRole="button"
+          accessibilityLabel="Try again"
+        >
+          Try again
+        </Button>
+      )}
       <Button
-        mode="contained"
+        mode={retryAction ? 'outlined' : 'contained'}
         onPress={() => router.replace(continueHref)}
         disabled={continueDisabled}
         style={styles.action}
