@@ -26,10 +26,11 @@ normalization, analysis, and projection are not implemented — see [`README.md`
 - **`frontend/`** — Expo (React Native + TypeScript) app using Expo Router for file-based
   navigation (`src/app/`), so one codebase runs as native iOS/Android and as a web build.
   Past the initial scaffold: `src/app/index.tsx` is a marketing landing page,
-  `src/app/login.tsx` is a working login screen wired to the backend (`src/api/`, a
-  `fetch`-based client), and `src/app/dashboard.tsx` is a route-guarded screen behind an
-  `AuthContext` session provider. Still missing: a signup/registration screen, an
-  account/settings screen, and silent token refresh on 401 — see
+  `src/app/login.tsx` / `src/app/signup.tsx` are working screens wired to the backend
+  (`src/api/`, a `fetch`-based client), `src/app/verify-email.tsx` redeems the emailed
+  verification link, and `src/app/dashboard.tsx` is a route-guarded screen behind an
+  `AuthContext` session provider. Still missing: an account/settings screen and silent
+  token refresh on 401 — see
   [`docs/design/uac-design.md`](docs/design/uac-design.md) §1 "Frontend integration" for
   the current gaps. See [`frontend/CLAUDE.md`](frontend/CLAUDE.md) /
   [`frontend/AGENTS.md`](frontend/AGENTS.md): Expo's API has changed since training

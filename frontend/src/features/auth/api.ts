@@ -84,3 +84,18 @@ export function logout(accessToken: string, refreshToken: string): Promise<void>
     body: { refresh_token: refreshToken },
   });
 }
+
+/**
+ * Redeems an email-verification token, flipping the account's
+ * `email_verified` flag. Does not sign the caller in or require a session.
+ *
+ * Rejects with {@link ApiError}: `status` 400 if the token is unknown or
+ * malformed, `status` 422 if it's a real token that already expired or was
+ * already used, `status` 0 if the server was unreachable.
+ */
+export function verifyEmail(token: string): Promise<void> {
+  return apiRequest<void>('/auth/verify-email', {
+    method: 'POST',
+    body: { token },
+  });
+}
