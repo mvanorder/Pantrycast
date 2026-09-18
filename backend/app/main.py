@@ -16,6 +16,45 @@ from app.routers import users as users_router
 
 logger = logging.getLogger(__name__)
 
+
+def _configure_logging() -> None:
+    """Give the ``app`` logger namespace a real INFO-level handler.
+
+    Runs at module-import time, so it applies to every real entry point:
+    uvicorn imports this module directly (``uvicorn app.main:app``, the
+    actual dev/prod command — it never calls :func:`run`), and
+    ``app.cli`` imports ``app.main`` too (for its FastAPI ``app`` object),
+    so ``python -m app.cli ...`` picks it up the same way. Deliberately
+    *not* placed in ``app/__init__.py``: that would fire for any import of
+    the ``app`` package at all (a one-off script, ``alembic/env.py``), not
+    just these two real process entry points.
+
+    Uvicorn's own logging config (uvicorn/uvicorn.access/uvicorn.error)
+    never touches the root logger, so without this, every ``app.*``
+    ``logger.info()`` call (e.g. ``ConsoleEmailSender``) is silently
+    dropped by Python's WARNING-level ``lastResort`` handler — only
+    warnings/errors would ever reach the console. Scoped to the ``app``
+    logger rather than ``logging.basicConfig()``'s root logger, so
+    third-party dependencies with no level of their own (httpx, aiosmtplib,
+    sqlalchemy, ...) keep their existing WARNING-level default instead of
+    suddenly becoming INFO-enabled process-wide. A no-op if ``app``'s
+    logger is already configured (e.g. by a test runner).
+
+    :returns: None
+    :rtype: None
+    """
+    app_logger = logging.getLogger("app")
+    if app_logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    app_logger.addHandler(handler)
+    app_logger.setLevel(logging.INFO)
+    app_logger.propagate = False
+
+
+_configure_logging()
+
 _TAGS_METADATA = [
     {"name": "health", "description": "Liveness/readiness checks — no auth required."},
     {
