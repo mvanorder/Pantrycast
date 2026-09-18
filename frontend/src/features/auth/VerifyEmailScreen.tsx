@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ComponentProps } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { ActivityIndicator, Button, Surface, Text } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -47,30 +47,38 @@ type VerifyEmailScreenProps = {
  */
 export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   const theme = useAppTheme();
-  const router = useRouter();
   const { status: authStatus } = useAuth();
 
-  // A missing token isn't something to synchronize with an external system —
-  // it's fully determined by the prop this screen mounted with — so it's
-  // derived here rather than set from inside the effect below.
-  const [status, setStatus] = useState<Status>(() => (token ? 'verifying' : 'error'));
-  const [errorMessage, setErrorMessage] = useState(() =>
-    token ? GENERIC_ERROR : MISSING_TOKEN_ERROR,
-  );
+  // Always starts `verifying`, even for a missing token: the static web
+  // export prerenders this screen with no query params, so an initial state
+  // derived from `token` would bake the error text into that build's first
+  // paint. Settling on the real state happens below, after mount, the same
+  // way a redemption failure does.
+  const [status, setStatus] = useState<Status>('verifying');
+  const [errorMessage, setErrorMessage] = useState(GENERIC_ERROR);
 
   useEffect(() => {
-    if (!token || !onVerify) {
+    // A missing token is folded into the same async settling path as a
+    // rejected redemption (rather than branching to a synchronous setState
+    // here) so every route to the `error` state goes through a microtask,
+    // same as a real `onVerify` rejection — see the `status` comment above.
+    const redemption = token
+      ? onVerify?.(token)
+      : Promise.reject(new Error(MISSING_TOKEN_ERROR));
+    if (!redemption) {
       return undefined;
     }
 
     let cancelled = false;
-    onVerify(token)
+    redemption
       .then(() => {
         if (!cancelled) setStatus('success');
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setErrorMessage(error instanceof ApiError ? error.message : GENERIC_ERROR);
+        setErrorMessage(
+          !token ? MISSING_TOKEN_ERROR : error instanceof ApiError ? error.message : GENERIC_ERROR,
+        );
         setStatus('error');
       });
     return () => {
@@ -81,6 +89,11 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  // While the stored session is still being restored, `authStatus` isn't
+  // "unauthenticated" yet — just unknown — so the continue action stays
+  // disabled rather than momentarily offering "Log in" to a visitor who
+  // turns out to already be signed in.
+  const authSettled = authStatus !== 'loading';
   const continueHref = authStatus === 'authenticated' ? '/dashboard' : '/login';
   const continueLabel = authStatus === 'authenticated' ? 'Go to dashboard' : 'Log in';
 
@@ -108,77 +121,91 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
           )}
 
           {status === 'success' && (
-            <View style={styles.section}>
-              <View style={[styles.art, { backgroundColor: theme.colors.primaryContainer }]}>
-                <MaterialCommunityIcons
-                  name="check-circle-outline"
-                  size={32}
-                  color={theme.colors.onPrimaryContainer}
-                />
-              </View>
-              <Text
-                {...heading(1)}
-                variant="headlineMedium"
-                style={[styles.title, { color: theme.colors.onSurface }]}
-              >
-                Email confirmed
-              </Text>
-              <Text
-                variant="bodyMedium"
-                style={[styles.message, { color: theme.colors.onSurfaceVariant }]}
-              >
-                Your email address is verified.
-              </Text>
-              <Button
-                mode="contained"
-                onPress={() => router.replace(continueHref)}
-                style={styles.action}
-                contentStyle={styles.actionContent}
-                accessibilityRole="button"
-                accessibilityLabel={continueLabel}
-              >
-                {continueLabel}
-              </Button>
-            </View>
+            <Outcome
+              icon="check-circle-outline"
+              iconBackground={theme.colors.primaryContainer}
+              iconColor={theme.colors.onPrimaryContainer}
+              title="Email confirmed"
+              body="Your email address is verified."
+              continueHref={continueHref}
+              continueLabel={continueLabel}
+              continueDisabled={!authSettled}
+            />
           )}
 
           {status === 'error' && (
-            <View style={styles.section}>
-              <View style={[styles.art, { backgroundColor: theme.colors.errorContainer }]}>
-                <MaterialCommunityIcons
-                  name="alert-circle-outline"
-                  size={32}
-                  color={theme.colors.onErrorContainer}
-                />
-              </View>
-              <Text
-                {...heading(1)}
-                variant="headlineMedium"
-                style={[styles.title, { color: theme.colors.onSurface }]}
-              >
-                We couldn’t confirm that email
-              </Text>
-              <Text
-                variant="bodyMedium"
-                style={[styles.message, { color: theme.colors.onSurfaceVariant }]}
-                accessibilityLiveRegion="polite"
-              >
-                {errorMessage}
-              </Text>
-              <Button
-                mode="contained"
-                onPress={() => router.replace(continueHref)}
-                style={styles.action}
-                contentStyle={styles.actionContent}
-                accessibilityRole="button"
-                accessibilityLabel={continueLabel}
-              >
-                {continueLabel}
-              </Button>
-            </View>
+            <Outcome
+              icon="alert-circle-outline"
+              iconBackground={theme.colors.errorContainer}
+              iconColor={theme.colors.onErrorContainer}
+              title="We couldn’t confirm that email"
+              body={errorMessage}
+              continueHref={continueHref}
+              continueLabel={continueLabel}
+              continueDisabled={!authSettled}
+            />
           )}
         </Surface>
       </ScreenScrollView>
+    </View>
+  );
+}
+
+type OutcomeProps = {
+  icon: ComponentProps<typeof MaterialCommunityIcons>['name'];
+  iconBackground: string;
+  iconColor: string;
+  title: string;
+  body: string;
+  continueHref: '/dashboard' | '/login';
+  continueLabel: string;
+  continueDisabled: boolean;
+};
+
+/** The settled (`success` or `error`) state of {@link VerifyEmailScreen} — same shape, different art/copy. */
+function Outcome({
+  icon,
+  iconBackground,
+  iconColor,
+  title,
+  body,
+  continueHref,
+  continueLabel,
+  continueDisabled,
+}: OutcomeProps) {
+  const theme = useAppTheme();
+  const router = useRouter();
+
+  return (
+    <View style={styles.section}>
+      <View style={[styles.art, { backgroundColor: iconBackground }]}>
+        <MaterialCommunityIcons name={icon} size={32} color={iconColor} />
+      </View>
+      <Text
+        {...heading(1)}
+        variant="headlineMedium"
+        style={[styles.title, { color: theme.colors.onSurface }]}
+      >
+        {title}
+      </Text>
+      <Text
+        variant="bodyMedium"
+        style={[styles.message, { color: theme.colors.onSurfaceVariant }]}
+        accessibilityLiveRegion="polite"
+      >
+        {body}
+      </Text>
+      <Button
+        mode="contained"
+        onPress={() => router.replace(continueHref)}
+        disabled={continueDisabled}
+        style={styles.action}
+        contentStyle={styles.actionContent}
+        accessibilityRole="button"
+        accessibilityLabel={continueLabel}
+      >
+        {continueLabel}
+      </Button>
     </View>
   );
 }

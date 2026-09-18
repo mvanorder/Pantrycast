@@ -106,4 +106,17 @@ describe('VerifyEmailScreen', () => {
 
     expect(screen.getByText('Confirming your email…')).toBeOnTheScreen();
   });
+
+  it('disables the continue action while the session is still being restored', async () => {
+    mockAuthStatus = 'loading';
+    const onVerify = jest.fn().mockResolvedValue(undefined);
+    await renderWithProviders(<VerifyEmailScreen token="a-token" onVerify={onVerify} />);
+
+    expect(await screen.findByLabelText('Log in')).toBeDisabled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByLabelText('Log in'));
+    });
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+  });
 });
