@@ -266,6 +266,37 @@ describe('signOut', () => {
     expect(mockClearTokenPair).toHaveBeenCalled();
     expect(result.current.status).toBe('unauthenticated');
   });
+
+  it('still ends the local session when clearing the token store fails', async () => {
+    // Otherwise tapping "Sign out" would leave the user looking signed in —
+    // the same invariant `restore` is hardened for above.
+    mockGetAccessToken.mockResolvedValue('access-jwt');
+    mockGetRefreshToken.mockResolvedValue('refresh-opaque');
+    mockFetchCurrentUser.mockResolvedValue(profile);
+    mockClearTokenPair.mockRejectedValue(new Error('storage unavailable'));
+
+    const { result } = await mountAuth();
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
+  });
+
+  it('still ends the local session when the token store is unreadable', async () => {
+    const { result } = await mountAuth();
+
+    mockGetAccessToken.mockRejectedValue(new Error('storage unavailable'));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
+  });
 });
 
 describe('useAuth outside a provider', () => {

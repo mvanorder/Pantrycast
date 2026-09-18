@@ -111,18 +111,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    const [accessToken, refreshToken] = await Promise.all([
-      getAccessToken(),
-      getRefreshToken(),
-    ]);
-    if (accessToken && refreshToken) {
-      await logout(accessToken, refreshToken).catch(() => {
-        // Best effort — a failed revocation still clears the client.
-      });
+    try {
+      const [accessToken, refreshToken] = await Promise.all([
+        getAccessToken(),
+        getRefreshToken(),
+      ]);
+      if (accessToken && refreshToken) {
+        await logout(accessToken, refreshToken).catch(() => {
+          // Best effort — a failed revocation still clears the client.
+        });
+      }
+      await clearTokenPair();
+    } catch {
+      // Same invariant as `restore` above: a token-store failure (reading or
+      // clearing) must not stop the local session from ending, or tapping
+      // "Sign out" would silently leave the user looking signed in.
+    } finally {
+      setUser(null);
+      setStatus('unauthenticated');
     }
-    await clearTokenPair();
-    setUser(null);
-    setStatus('unauthenticated');
   }, []);
 
   const value = useMemo<AuthContextValue>(

@@ -21,6 +21,41 @@ const GENERIC_ERROR = 'Something went wrong confirming your email. Please try ag
 // (uac-design.md §1) — only `register` issues a verification token today.
 const MISSING_TOKEN_ERROR =
   "This link is missing its verification token — or your email is already confirmed and this page was just reloaded.";
+// `POST /auth/verify-email`'s 400 (`backend/app/routers/auth.py`) is a bare
+// developer string — "Invalid verification token", no punctuation, no next
+// step — not something to show a user verbatim. This is the path a link an
+// email client wrapped or truncated actually lands on, so it's the one
+// that most needs the hint the raw string doesn't give.
+const INVALID_TOKEN_ERROR =
+  "This verification link isn't valid. Check that you copied the full link from your email, then try again.";
+// The 422 detail ("Verification token has expired or already been used") is
+// at least accurate, but still reads as a log line rather than copy aimed at
+// the person looking at it.
+const EXPIRED_TOKEN_ERROR = 'This verification link has expired or has already been used.';
+
+/**
+ * Turns a redemption failure into copy for the `error` state.
+ *
+ * Only a transport failure (`status === 0`) shows the API client's own
+ * message verbatim — that copy (`api/client.ts`'s `NETWORK_ERROR_MESSAGE`) is
+ * already user-facing. A 400/422 gets translated (see the constants above);
+ * anything else falls back to {@link GENERIC_ERROR}.
+ */
+function describeVerificationError(error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return GENERIC_ERROR;
+  }
+  switch (error.status) {
+    case 0:
+      return error.message;
+    case 400:
+      return INVALID_TOKEN_ERROR;
+    case 422:
+      return EXPIRED_TOKEN_ERROR;
+    default:
+      return GENERIC_ERROR;
+  }
+}
 
 type Status = 'verifying' | 'success' | 'error';
 
@@ -32,11 +67,12 @@ type VerifyEmailScreenProps = {
    * `POST /auth/verify-email`. Called once, on mount, with a non-empty
    * `token`.
    *
-   * Reject to surface an error: an {@link ApiError}'s message is shown
-   * verbatim (the API's 422 "expired or already used" copy is already
-   * user-facing), anything else falls back to a generic message. Resolve on
-   * success. Left undefined (isolated tests, previews), the screen sits in
-   * the `verifying` state forever.
+   * Reject to surface an error: a rejection is translated by
+   * {@link describeVerificationError} — only a transport failure
+   * (`ApiError.status === 0`) shows the message verbatim, since the API's own
+   * 400/422 detail strings are bare developer copy, not user-facing text.
+   * Resolve on success. Left undefined (isolated tests, previews), the
+   * screen sits in the `verifying` state forever.
    */
   onVerify?: (token: string) => Promise<void>;
 };
@@ -94,6 +130,19 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
       // there (`expo-router/build/fork/createMemoryHistory.js`), and
       // clobbering it would corrupt back/forward navigation on this entry.
       // We only want to change the URL, not the state object.
+      //
+      // This bypasses expo-router's own history API entirely, which has one
+      // sharp edge: `useLinking.js`'s `onStateChange` re-derives the URL from
+      // React Navigation's state tree and calls `history.replace({ path,
+      // state })` on it whenever that state tree changes — and that tree
+      // still has `token` as this route's param, unaffected by this direct
+      // DOM call. A *navigation* action elsewhere while this screen is still
+      // mounted (a push/replace, tab switch, etc.) would re-run that listener
+      // and could put `?token=…` right back. In practice nothing here
+      // triggers a navigation action until "continue" is pressed — which
+      // replaces to a different route with a clean URL of its own anyway —
+      // so this hasn't been an issue, but it's not proof against every future
+      // caller of this screen.
       window.history.replaceState(window.history.state, '', window.location.pathname);
     }
 
@@ -118,9 +167,7 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
-        setErrorMessage(
-          !token ? MISSING_TOKEN_ERROR : error instanceof ApiError ? error.message : GENERIC_ERROR,
-        );
+        setErrorMessage(!token ? MISSING_TOKEN_ERROR : describeVerificationError(error));
         setCanRetry(!!token && error instanceof ApiError && error.status === 0);
         setStatus('error');
       });

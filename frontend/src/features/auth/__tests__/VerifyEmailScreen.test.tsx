@@ -83,11 +83,29 @@ describe('VerifyEmailScreen', () => {
     expect(mockRouterReplace).toHaveBeenCalledWith('/dashboard');
   });
 
-  it('surfaces the API message when the token is expired or already used, with no retry action', async () => {
-    const onVerify = jest.fn().mockRejectedValue(new ApiError(422, 'This link has expired.'));
+  it('translates the bare 422 detail into user-facing copy, with no retry action', async () => {
+    // The real backend string (backend/app/routers/auth.py) — bare developer
+    // copy, not something to show verbatim.
+    const onVerify = jest
+      .fn()
+      .mockRejectedValue(new ApiError(422, 'Verification token has expired or already been used'));
     await renderWithProviders(<VerifyEmailScreen token="stale-token" onVerify={onVerify} />);
 
-    await waitFor(() => expect(screen.getByText('This link has expired.')).toBeOnTheScreen());
+    expect(
+      await screen.findByText('This verification link has expired or has already been used.'),
+    ).toBeOnTheScreen();
+    expect(screen.queryByLabelText('Try again')).not.toBeOnTheScreen();
+  });
+
+  it('translates the bare 400 detail into user-facing copy, with no retry action', async () => {
+    const onVerify = jest.fn().mockRejectedValue(new ApiError(400, 'Invalid verification token'));
+    await renderWithProviders(<VerifyEmailScreen token="mangled-token" onVerify={onVerify} />);
+
+    expect(
+      await screen.findByText(
+        "This verification link isn't valid. Check that you copied the full link from your email, then try again.",
+      ),
+    ).toBeOnTheScreen();
     expect(screen.queryByLabelText('Try again')).not.toBeOnTheScreen();
   });
 
