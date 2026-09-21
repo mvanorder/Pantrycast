@@ -1,4 +1,7 @@
-"""Authentication endpoints: register, verify-email, login, refresh, logout, password-reset (uac-design.md §1)."""
+"""Authentication endpoints
+
+register, verify-email, login, refresh, logout, password-reset (uac-design.md §1).
+"""
 
 import logging
 import uuid
