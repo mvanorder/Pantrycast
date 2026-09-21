@@ -10,11 +10,14 @@ via SQLAlchemy's async engine, with Alembic managing schema migrations.
 
 - `app/main.py` — FastAPI app; mounts the routers below plus its own
   `/health`, `/health/db`, `/orders/upload`.
-- `app/routers/auth.py` — `POST /auth/{register,verify-email,login,refresh,logout,logout-all}`
-  (see `docs/design/uac-design.md` §1 "Authentication endpoints" for the full
-  contract: transport, error codes, refresh-token rotation/reuse semantics).
-  `register` issues a verification token and schedules the email; `verify-email`
-  consumes it (hash + purpose lookup, row-locked against a double-spend race).
+- `app/routers/auth.py` — `POST /auth/{register,verify-email,login,refresh,logout,logout-all,
+  password-reset,password-reset/confirm}` (see `docs/design/uac-design.md` §1 "Authentication
+  endpoints" for the full contract: transport, error codes, refresh-token rotation/reuse
+  semantics). `register` issues a verification token and schedules the email; `verify-email`
+  consumes it (hash + purpose lookup, row-locked against a double-spend race). `password-reset`
+  and `password-reset/confirm` follow the identical token issue/consume shape (purpose
+  `password_reset`) — `password-reset` always 204s regardless of whether the email matched an
+  account (anti-enumeration), and `confirm` also revokes every refresh token the user holds.
 - `app/routers/users.py` — `GET /users/me`, the first protected route.
 - `app/dependencies.py` — `get_current_user`, the `HTTPBearer`-based
   dependency every protected route depends on.
@@ -25,9 +28,9 @@ via SQLAlchemy's async engine, with Alembic managing schema migrations.
 - `app/tokens.py` — single-use email-verification / password-reset token
   generate + SHA-256 hash (`VerificationPurpose` enum), same shape as
   `security.py`'s refresh-token helpers. No FastAPI imports. The
-  `verification_tokens` table is `app/models/verification_token.py`. The
-  `verify-email` endpoint (`app/routers/auth.py`) is built; `password-reset`
-  isn't yet.
+  `verification_tokens` table is `app/models/verification_token.py`. Both the
+  `verify-email` and `password-reset`/`password-reset/confirm` endpoints
+  (`app/routers/auth.py`) are built on top of it now.
 - `app/mailer/` — outgoing transactional email (uac-design.md §1). The
   `EmailSender` protocol plus an `aiosmtplib` SMTP sender (`smtp.py`) and a
   console sender (`console.py`, logs instead of sending — the zero-setup
@@ -35,8 +38,8 @@ via SQLAlchemy's async engine, with Alembic managing schema migrations.
   message templates; `delivery.py` has the `BackgroundTasks`-ready send
   helpers a route schedules; `factory.py` has `get_email_sender` (a
   `Depends(...)` target, like `get_settings`). No FastAPI imports below
-  `factory.py`. `register` (`app/routers/auth.py`) schedules the
-  verification email; the `password-reset` send path isn't wired up yet.
+  `factory.py`. `register` schedules the verification email; `password-reset`
+  schedules the reset email the same way (`app/routers/auth.py`).
 - `app/schemas.py` — Pydantic request/response models for the auth/user API.
 - `app/config.py` — `Settings` (pydantic-settings) for Postgres connection,
   JWT signing-key, and SMTP/email config, loaded from `backend/.env` (see

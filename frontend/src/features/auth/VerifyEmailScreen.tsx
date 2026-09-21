@@ -1,15 +1,15 @@
-import { useEffect, useState, type ComponentProps } from 'react';
+import { useEffect, useState } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { ActivityIndicator, Button, Surface, Text } from 'react-native-paper';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { ActivityIndicator, Surface, Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ApiError } from '@/api/client';
 import { BrandMark } from '@/components/BrandMark';
 import { ScreenScrollView } from '@/components/ScreenScrollView';
-import { heading, layout, radius, spacing, useAppTheme, useResponsive } from '@/theme';
+import { radius, spacing, useAppTheme, useResponsive } from '@/theme';
 
+import { AuthOutcome, LiveAnnouncement, type AuthOutcomeAction } from './AuthOutcome';
 import { useAuth } from './AuthContext';
 
 const GENERIC_ERROR = 'Something went wrong confirming your email. Please try again.';
@@ -96,6 +96,7 @@ type VerifyEmailScreenProps = {
 export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { gutter } = useResponsive();
   const { status: authStatus } = useAuth();
 
@@ -193,17 +194,14 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
   // disabled rather than momentarily offering "Log in" to a visitor who
   // turns out to already be signed in.
   const authSettled = authStatus !== 'loading';
-  const continueHref = authStatus === 'authenticated' ? '/dashboard' : '/login';
-  const continueLabel = authStatus === 'authenticated' ? 'Go to dashboard' : 'Log in';
+  const continueAction: AuthOutcomeAction = {
+    label: authStatus === 'authenticated' ? 'Go to dashboard' : 'Log in',
+    onPress: () => router.replace(authStatus === 'authenticated' ? '/dashboard' : '/login'),
+    disabled: !authSettled,
+  };
 
-  // `accessibilityLiveRegion` only reliably announces a *change* to an
-  // already-present region's content — not a region that appears at the
-  // same moment its content does, which is what putting it directly on the
-  // success/error `Outcome` text would do (the verifying → settled
-  // transition unmounts one and mounts the other). So this text node is
-  // mounted unconditionally, from the very first render, empty until there's
-  // something to say — the visible per-status copy below stays as plain,
-  // non-live text so it isn't announced a second time.
+  // Fed to the always-mounted {@link LiveAnnouncement} below rather than
+  // announced off the visible copy — see that component for why.
   const announcement =
     status === 'success'
       ? 'Email confirmed. Your email address is verified.'
@@ -228,13 +226,7 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
             <BrandMark />
           </View>
 
-          <Text
-            testID="verify-email-announcer"
-            accessibilityLiveRegion="polite"
-            style={styles.srOnly}
-          >
-            {announcement}
-          </Text>
+          <LiveAnnouncement testID="verify-email-announcer" message={announcement} />
 
           {status === 'verifying' && (
             <View style={styles.section}>
@@ -249,106 +241,33 @@ export function VerifyEmailScreen({ token, onVerify }: VerifyEmailScreenProps) {
           )}
 
           {status === 'success' && (
-            <Outcome
+            <AuthOutcome
               icon="check-circle-outline"
-              iconBackground={theme.colors.primaryContainer}
-              iconColor={theme.colors.onPrimaryContainer}
+              tone="success"
               title="Email confirmed"
               body="Your email address is verified."
-              continueHref={continueHref}
-              continueLabel={continueLabel}
-              continueDisabled={!authSettled}
+              actions={[continueAction]}
             />
           )}
 
           {status === 'error' && (
-            <Outcome
+            <AuthOutcome
               icon="alert-circle-outline"
-              iconBackground={theme.colors.errorContainer}
-              iconColor={theme.colors.onErrorContainer}
+              tone="error"
               title="We couldn’t confirm that email"
               body={errorMessage}
-              continueHref={continueHref}
-              continueLabel={continueLabel}
-              continueDisabled={!authSettled}
-              retryAction={canRetry ? retry : undefined}
+              actions={
+                canRetry
+                  ? [
+                      { label: 'Try again', onPress: retry },
+                      { ...continueAction, mode: 'outlined' },
+                    ]
+                  : [continueAction]
+              }
             />
           )}
         </Surface>
       </ScreenScrollView>
-    </View>
-  );
-}
-
-type OutcomeProps = {
-  icon: ComponentProps<typeof MaterialCommunityIcons>['name'];
-  iconBackground: string;
-  iconColor: string;
-  title: string;
-  body: string;
-  continueHref: '/dashboard' | '/login';
-  continueLabel: string;
-  continueDisabled: boolean;
-  /** Shown as a second, primary action above "continue" — only for a retryable failure. */
-  retryAction?: () => void;
-};
-
-/** The settled (`success` or `error`) state of {@link VerifyEmailScreen} — same shape, different art/copy. */
-function Outcome({
-  icon,
-  iconBackground,
-  iconColor,
-  title,
-  body,
-  continueHref,
-  continueLabel,
-  continueDisabled,
-  retryAction,
-}: OutcomeProps) {
-  const theme = useAppTheme();
-  const router = useRouter();
-
-  return (
-    <View style={styles.section}>
-      <View style={[styles.art, { backgroundColor: iconBackground }]}>
-        <MaterialCommunityIcons name={icon} size={32} color={iconColor} />
-      </View>
-      <Text
-        {...heading(1)}
-        variant="headlineMedium"
-        style={[styles.title, { color: theme.colors.onSurface }]}
-      >
-        {title}
-      </Text>
-      <Text
-        variant="bodyMedium"
-        style={[styles.message, { color: theme.colors.onSurfaceVariant }]}
-      >
-        {body}
-      </Text>
-      {retryAction && (
-        <Button
-          mode="contained"
-          onPress={retryAction}
-          style={styles.action}
-          contentStyle={styles.actionContent}
-          accessibilityRole="button"
-          accessibilityLabel="Try again"
-        >
-          Try again
-        </Button>
-      )}
-      <Button
-        mode={retryAction ? 'outlined' : 'contained'}
-        onPress={() => router.replace(continueHref)}
-        disabled={continueDisabled}
-        style={styles.action}
-        contentStyle={styles.actionContent}
-        accessibilityRole="button"
-        accessibilityLabel={continueLabel}
-      >
-        {continueLabel}
-      </Button>
     </View>
   );
 }
@@ -375,37 +294,9 @@ const styles = StyleSheet.create({
   section: {
     alignItems: 'center',
   },
-  art: {
-    width: 64,
-    height: 64,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: radius.pill,
-    marginBottom: spacing.lg,
-  },
-  title: {
-    textAlign: 'center',
-  },
   message: {
     textAlign: 'center',
     marginTop: spacing.xs,
     maxWidth: 360,
-  },
-  action: {
-    borderRadius: radius.pill,
-    marginTop: spacing.lg,
-    alignSelf: 'stretch',
-  },
-  actionContent: {
-    height: layout.minTouchTarget,
-  },
-  // Present in the accessibility tree (so `accessibilityLiveRegion` can
-  // announce it) but not visible or laid out for sighted users — the
-  // standard "visually hidden" shape.
-  srOnly: {
-    position: 'absolute',
-    width: 1,
-    height: 1,
-    overflow: 'hidden',
   },
 });

@@ -1,4 +1,4 @@
-"""Authentication endpoints: register, verify-email, login, refresh, logout (uac-design.md §1)."""
+"""Authentication endpoints: register, verify-email, login, refresh, logout, password-reset (uac-design.md §1)."""
 
 import logging
 import uuid
@@ -13,12 +13,14 @@ from app.config import Settings, get_settings
 from app.db import get_db
 from app.dependencies import get_current_user
 from app.mailer import EmailSender
-from app.mailer.delivery import send_verification_email
+from app.mailer.delivery import send_password_reset_email, send_verification_email
 from app.mailer.factory import get_email_sender
 from app.models import AuthIdentity, RefreshToken, User, VerificationToken
 from app.schemas import (
     LoginRequest,
     LogoutRequest,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RefreshRequest,
     RegisterRequest,
     RegisterResponse,
@@ -498,4 +500,146 @@ async def logout_all(
     :type db: AsyncSession
     """
     await _revoke_all_refresh_tokens(db, claims.user_id)
+    await db.commit()
+
+
+@router.post(
+    "/password-reset",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Request a password-reset email",
+)
+async def request_password_reset(
+    payload: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    sender: EmailSender = Depends(get_email_sender),
+) -> None:
+    """Issue a password-reset token and email it, if the address matches an account.
+
+    Always returns the same 204 with an empty body regardless of whether
+    ``payload.email`` matches a ``users`` row — anti-enumeration, matching
+    :func:`login`'s generic failure rather than :func:`register`'s "email
+    already registered" (uac-design.md §1). A match stages a
+    ``VerificationToken`` (purpose ``password_reset``) and schedules the
+    email via ``BackgroundTasks``, the same way :func:`register` handles
+    its ``email_verify`` token; no match does neither. This does **not**
+    defend against timing-based enumeration — the match branch pays for an
+    extra insert + commit the no-match branch doesn't, so a sufficiently
+    precise timing measurement can still distinguish them. Same scope
+    decision as :func:`_authenticate_password`'s docstring (no
+    constant-time protection either); revisit both together if that stops
+    being acceptable.
+
+    :param payload: The password-reset request body.
+    :type payload: PasswordResetRequest
+    :param background_tasks: Used to schedule the reset email after the
+        response is ready, so a slow SMTP exchange never blocks it.
+    :type background_tasks: BackgroundTasks
+    :param db: The database session, injected via dependency.
+    :type db: AsyncSession
+    :param settings: Application settings (email base URL, token TTL).
+    :type settings: Settings
+    :param sender: The configured email sender, injected via dependency.
+    :type sender: EmailSender
+    """
+    # No rate-limiting on this endpoint yet, deliberately (uac-design.md
+    # §1/§7 — no Redis exists to back one) — a Depends(...) here is where a
+    # future rate limiter would slot in. Matters even more here than on
+    # login/refresh: this is the one auth endpoint that emails an address
+    # the caller doesn't have to prove they control.
+    result = await db.execute(select(User).where(User.email == payload.email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        return
+
+    # Deliberately not gated on user.is_active, unlike login/refresh:
+    # resetting a disabled account's password doesn't reactivate it (that
+    # gate stays solely in _authenticate_password/refresh per uac-design.md
+    # §1 "Account states") — it only means a disabled account's owner can
+    # still rotate its password and revoke its own sessions.
+    raw_token = generate_verification_token()
+    db.add(
+        VerificationToken(
+            user_id=user.id,
+            token_hash=hash_verification_token(raw_token),
+            purpose=VerificationPurpose.PASSWORD_RESET,
+            expires_at=datetime.now(UTC) + settings.verification_token_ttl,
+        )
+    )
+    await db.commit()
+
+    background_tasks.add_task(
+        send_password_reset_email,
+        sender,
+        to_email=user.email,
+        token=raw_token,
+        base_url=settings.email_base_url,
+        ttl=settings.verification_token_ttl,
+    )
+
+
+@router.post(
+    "/password-reset/confirm",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Set a new password using a password-reset token",
+)
+async def confirm_password_reset(
+    payload: PasswordResetConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Consume a single-use password-reset token and set a new password.
+
+    Looked up the same way as :func:`verify_email` — exact hash equality,
+    filtered on ``purpose='password_reset'`` in the same query, row-locked
+    with ``.with_for_update()`` against the identical double-spend race; see
+    that function's docstring for the rationale, which applies unchanged
+    here (a ``email_verify``-purpose token's hash never matches this
+    lookup, so it 400s indistinguishably from an unknown token).
+
+    Sets the new password via
+    :func:`app.security.upsert_password_identity`, which creates the
+    account's first ``password`` identity if it only had a ``google`` one
+    (uac-design.md §1's "add a password to an OAuth-only account later"
+    case) or overwrites the existing hash otherwise. Also revokes every
+    refresh token the user currently holds, exactly like :func:`logout_all`
+    — a password reset is exactly the situation where an existing session
+    (possibly an attacker's, if the old password had leaked) should not
+    survive it.
+
+    :param payload: The password-reset-confirm request body.
+    :type payload: PasswordResetConfirmRequest
+    :param db: The database session, injected via dependency.
+    :type db: AsyncSession
+    :raises HTTPException: 400 if the token is unknown, malformed, or
+        belongs to a different purpose; 422 if it's a real token that has
+        already expired or already been consumed.
+    """
+    token_hash = hash_verification_token(payload.token)
+    result = await db.execute(
+        select(VerificationToken)
+        .where(
+            VerificationToken.token_hash == token_hash,
+            VerificationToken.purpose == VerificationPurpose.PASSWORD_RESET,
+        )
+        .with_for_update()
+    )
+    stored = result.scalar_one_or_none()
+    if stored is None:
+        raise HTTPException(status_code=400, detail=_INVALID_VERIFICATION_TOKEN_DETAIL)
+
+    now = datetime.now(UTC)
+    if stored.consumed_at is not None or stored.expires_at <= now:
+        raise HTTPException(status_code=422, detail=_VERIFICATION_TOKEN_NOT_ACTIVE_DETAIL)
+
+    stored.consumed_at = now
+    user_result = await db.execute(select(User).where(User.id == stored.user_id))
+    user = user_result.scalar_one_or_none()
+    if user is None:
+        # Should be unreachable — verification_tokens.user_id FK CASCADEs on
+        # user deletion, so a row reaching this point has a matching user.
+        raise RuntimeError("verification_tokens.user_id FK guarantees a matching users row")
+
+    await upsert_password_identity(db, user, hash_password(payload.new_password))
+    await _revoke_all_refresh_tokens(db, user.id)
     await db.commit()

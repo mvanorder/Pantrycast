@@ -99,3 +99,46 @@ export function verifyEmail(token: string): Promise<void> {
     body: { token },
   });
 }
+
+/**
+ * Asks for a password-reset link to be emailed to `email`.
+ *
+ * Resolving says only that the request was accepted — never that the address
+ * belongs to an account. `POST /auth/password-reset` answers 204 either way
+ * (anti-enumeration, uac-design.md §1): a match schedules the email, a
+ * non-match silently does nothing, and the two are indistinguishable from
+ * here. Callers must word their success state accordingly ("if that address
+ * has an account…") and must not treat a resolution as confirmation.
+ *
+ * Rejects with {@link ApiError}: `status` 422 if the body isn't a well-formed
+ * email address, `status` 0 if the server was unreachable. There is
+ * deliberately no "email not found" rejection to handle.
+ */
+export function requestPasswordReset(email: string): Promise<void> {
+  return apiRequest<void>('/auth/password-reset', {
+    method: 'POST',
+    body: { email },
+  });
+}
+
+/**
+ * Redeems a single-use password-reset token and sets `newPassword` on the
+ * account. Does not sign the caller in — `POST /auth/password-reset/confirm`
+ * returns no token pair, and it revokes every refresh token the account
+ * holds, so the user must {@link login} again with the new password.
+ *
+ * Rejects with {@link ApiError}: `status` 400 if the token is unknown,
+ * malformed, or issued for a different purpose, `status` 422 if it's a real
+ * reset token that already expired or was already used, `status` 0 if the
+ * server was unreachable.
+ *
+ * Note that 422 is shared: the API also answers 422 when `newPassword` falls
+ * outside its 8–128 character bound, so callers must enforce that bound
+ * client-side or risk reporting a length problem as an expired link.
+ */
+export function confirmPasswordReset(token: string, newPassword: string): Promise<void> {
+  return apiRequest<void>('/auth/password-reset/confirm', {
+    method: 'POST',
+    body: { token, new_password: newPassword },
+  });
+}

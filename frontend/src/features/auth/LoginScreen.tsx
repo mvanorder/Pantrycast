@@ -202,9 +202,34 @@ export function LoginScreen({ onSubmit }: LoginScreenProps) {
                   />
                 }
               />
-              <HelperText type="error" visible={liveErrors.password != null}>
-                {liveErrors.password ?? ' '}
-              </HelperText>
+              {/* The recovery link shares the password field's helper row —
+                  right under the input, where users look for it, and without
+                  pushing the primary "Log in" action further down the card.
+                  The helper text takes the space it needs first, so a
+                  validation message is never clipped by the link. */}
+              <View style={styles.passwordFooter}>
+                <HelperText
+                  type="error"
+                  visible={liveErrors.password != null}
+                  style={styles.passwordHelper}
+                >
+                  {liveErrors.password ?? ' '}
+                </HelperText>
+                <Button
+                  mode="text"
+                  compact
+                  // `push`, not `replace` like the footer's cross-link:
+                  // recovery is a detour, so the platform back affordance
+                  // (iOS swipe-back, Android back, browser back) should land
+                  // on the login form again.
+                  onPress={() => router.push('/forgot-password')}
+                  contentStyle={styles.forgotContent}
+                  accessibilityRole="button"
+                  accessibilityLabel="Forgot password?"
+                >
+                  Forgot password?
+                </Button>
+              </View>
             </View>
 
             <Button
@@ -274,6 +299,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.xs,
     marginBottom: spacing.lg,
+  },
+  passwordFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.xs,
+  },
+  passwordHelper: {
+    flexShrink: 1,
+  },
+  // Paper's `compact` trims a text button's padding below the 44pt minimum;
+  // put it back so the link is as tappable as every other control here.
+  forgotContent: {
+    height: layout.minTouchTarget,
   },
   submit: {
     borderRadius: radius.pill,
