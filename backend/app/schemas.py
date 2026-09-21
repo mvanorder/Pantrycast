@@ -72,6 +72,20 @@ class LogoutRequest(BaseModel):
     refresh_token: str = Field(max_length=512)
 
 
+class PasswordResetRequest(BaseModel):
+    """Request body for ``POST /auth/password-reset``."""
+
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Request body for ``POST /auth/password-reset/confirm``."""
+
+    # Same bound and rationale as VerifyEmailRequest.token.
+    token: str = Field(max_length=512)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class UserProfile(BaseModel):
     """Response body for ``GET /users/me`` — the caller's own profile."""
 

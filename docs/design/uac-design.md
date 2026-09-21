@@ -15,9 +15,11 @@ behind an `EmailSender` protocol, a console fallback for local dev, message temp
 `verification_tokens` table + migration, and token generate/hash helpers (`backend/app/mailer/`,
 `backend/app/tokens.py`, `backend/app/models/verification_token.py`). `POST /auth/verify-email`
 is now built too, along with `register`'s token-issuing/send wiring — the full signup → email →
-verify loop is reachable end to end (`backend/app/routers/auth.py`). Still design-only: RBAC
-enforcement (§3), the Google OAuth flow (§4), and the `password-reset` endpoints (same sender/token
-infra, just not wired to endpoints yet).
+verify loop is reachable end to end (`backend/app/routers/auth.py`). `POST /auth/password-reset`
+and `POST /auth/password-reset/confirm` are now built too, on the identical token/email
+infrastructure — `password-reset` always 204s regardless of whether the email matched an account
+(anti-enumeration), and `confirm` also revokes every refresh token the user holds, the same as
+`logout-all`. Still design-only: RBAC enforcement (§3) and the Google OAuth flow (§4).
 Scope: user accounts, authentication, authorization (RBAC), and the container/deployment
 architecture needed to run this at anywhere from single-user to millions-of-users scale.
 
@@ -107,13 +109,14 @@ random data, not a low-entropy human password, and `POST /auth/refresh` needs to
 exact hash equality, which a per-call-salted hash can't support without a full-table scan — see
 the function's docstring). Revisit the access-token payload once §3 lands.
 
-### Authentication endpoints [core password loop implemented; see below for what isn't]
+### Authentication endpoints [password loop + password-reset implemented; see below for what isn't]
 
 Everything above describes the token *strategy*; this is the HTTP surface that actually issues
 and consumes them. `register`/`verify-email`/`login`/`refresh`/`logout`/`logout-all`/
-`GET /users/me` are built (`backend/app/routers/auth.py`, `backend/app/routers/users.py`,
-`backend/app/dependencies.py`); `password-reset` and the Google OAuth endpoints (§4) are not —
-see the table below for which is which. This is separate from the `create-superuser` CLI (§2),
+`password-reset`/`password-reset/confirm`/`GET /users/me` are built
+(`backend/app/routers/auth.py`, `backend/app/routers/users.py`, `backend/app/dependencies.py`);
+only the Google OAuth endpoints (§4) are not — see the table below for which is which. This is
+separate from the `create-superuser` CLI (§2),
 which writes `users`/`auth_identities` rows directly rather than going through this API.
 
 **Transport.** The access token travels as a standard `Authorization: Bearer <token>` header —
@@ -138,7 +141,8 @@ placeholder per the file's own comment, not yet the SecureStore split described 
 | `POST /auth/refresh` **[built]** | refresh token (body) | Validate + rotate the refresh token; issue a new pair. See the reuse-detection note below. |
 | `POST /auth/logout` **[built]** | access token | Revoke the refresh token tied to the current session/device — silently a no-op (still 204) if that token doesn't exist or belongs to someone else, so an authenticated caller can't use this to force-log-out another user or probe whether a token exists. |
 | `POST /auth/logout-all` **[built]** | access token | Revoke every `refresh_tokens` row for the user ("sign out all devices"). |
-| `POST /auth/password-reset` / `POST /auth/password-reset/confirm` | none | Same short-lived-token pattern as email verification (`purpose='password_reset'`). **Not built** — same status: sender + token infra ready, endpoints are the remaining work. |
+| `POST /auth/password-reset` **[built]** | none | Same short-lived-token pattern as email verification (`purpose='password_reset'`). Always returns 204 whether or not the email matched an account — anti-enumeration. A match stages a token and schedules the reset email; no match does neither, silently. |
+| `POST /auth/password-reset/confirm` **[built]** | none (token in body) | Consumes the token (same lookup/lock/purpose-filter/error-code shape as `verify-email`), sets a new password via the same `upsert_password_identity` helper `register`/`create-superuser` use (creating the account's first `password` identity if it only had a `google` one), and revokes every refresh token the user holds — same as `logout-all` — since an existing session shouldn't survive a password reset. |
 | `GET /auth/google/login`, `GET /auth/google/callback` | none | The OAuth flow specified in §4. **Not built.** |
 | `GET /users/me` **[built]** | access token | Return the caller's own profile, re-fetched from the DB by the token's `sub` rather than trusting cached claims — the simplest possible exercise of the dependency below. |
 
@@ -176,14 +180,16 @@ verification any protected route needs:
 - Login/register/refresh failures use **400** (malformed request, e.g. duplicate email on
   register) vs **401** (bad credentials/token) as built today; **429** (rate-limited) is **not
   built** — no Redis exists yet to back one (§7) — but `backend/app/routers/auth.py` marks exactly
-  where a rate-limiting `Depends(...)` would slot into `login`/`register`/`refresh`.
+  where a rate-limiting `Depends(...)` would slot into `login`/`register`/`refresh`/`password-reset`
+  (this last one arguably matters most of the four: it's the one endpoint that emails an address
+  the caller doesn't have to prove they control).
 
-### Email delivery [sender built; used by register (send) and verify-email (consume)]
+### Email delivery [sender built; used by register/password-reset (send) and verify-email/password-reset-confirm (consume)]
 
 `register` issues a `verification_tokens` row, **commits**, then hands the send to FastAPI
 `BackgroundTasks` so a slow SMTP exchange never blocks the response; `verify-email` consumes it.
-The still-unbuilt `password-reset` endpoints will follow the identical pattern.
-`backend/app/mailer/` is built for this:
+`password-reset`/`password-reset/confirm` now follow the identical pattern with `purpose=
+'password_reset'`. `backend/app/mailer/` is built for this:
 
 - **`EmailSender` protocol** — the single seam. `SmtpEmailSender` (`aiosmtplib`, provider-agnostic
   — SES SMTP, Postmark, Mailgun, a self-run relay) is the real one; `ConsoleEmailSender` logs
@@ -223,13 +229,15 @@ machine until a real reason to enforce it exists.
 
 **Built** (`frontend/src/features/auth/`, `frontend/src/app/login.tsx`,
 `frontend/src/app/signup.tsx`, `frontend/src/app/verify-email.tsx`,
+`frontend/src/app/forgot-password.tsx`, `frontend/src/app/reset-password.tsx`,
 `frontend/src/app/dashboard.tsx`, `frontend/src/app/_layout.tsx`):
 
 - `frontend/src/api/client.ts` / `frontend/src/api/config.ts` — a thin `fetch`-based JSON client
   (`apiRequest<T>()`), base URL from `EXPO_PUBLIC_API_URL`.
 - `frontend/src/features/auth/api.ts` — `login()` → `POST /auth/login`, `register()` →
   `POST /auth/register`, `fetchCurrentUser()` → `GET /users/me`, `logout()` →
-  `POST /auth/logout`, `verifyEmail()` → `POST /auth/verify-email`.
+  `POST /auth/logout`, `verifyEmail()` → `POST /auth/verify-email`, `requestPasswordReset()` →
+  `POST /auth/password-reset`, `confirmPasswordReset()` → `POST /auth/password-reset/confirm`.
 - `frontend/src/features/auth/AuthContext.tsx` — `AuthProvider`/`useAuth()`, tracking
   `status: 'loading' | 'authenticated' | 'unauthenticated'`. Restores the session on app start from
   a stored access token via `fetchCurrentUser`; mounted around the whole app in `_layout.tsx`.
@@ -242,6 +250,21 @@ machine until a real reason to enforce it exists.
   `render_verification_email`'s `{EMAIL_BASE_URL}/verify-email?token=…` link) — redeems the
   `?token=` query param via `verifyEmail()` automatically on mount, no session required either way.
   Reachable signed in or signed out; "continue" goes to `/dashboard` or `/login` accordingly.
+- A "Forgot password?" link on `LoginScreen`, sharing the password field's helper row, opens
+  `frontend/src/app/forgot-password.tsx` (route `/forgot-password`). Its `ForgotPasswordScreen`
+  takes just an email and settles into one unconditional "if that address has an account…" state
+  regardless of what `requestPasswordReset()` actually did server-side — the copy is deliberately
+  incapable of confirming or denying an account exists, matching the endpoint's own anti-enumeration
+  contract above.
+- `frontend/src/app/reset-password.tsx` (route `/reset-password`, matching
+  `render_password_reset_email`'s `{EMAIL_BASE_URL}/reset-password?token=…` link) — unlike
+  `verify-email`, `ResetPasswordScreen` does *not* redeem the token on mount; it collects a new
+  password first and spends the token on submit, since — until then — it's still a live credential
+  sitting in the URL (stripped from the address bar on web the same way `verify-email` does).
+  Enforces the backend's 8–128 character password bound client-side, since the confirm endpoint
+  overloads 422 between "expired/used token" and "password out of bounds" and the screen needs to
+  tell those apart in its copy. Succeeding does not start a session (the endpoint issues no token
+  pair and revokes every refresh token on the account), so "continue" only ever goes to `/login`.
 - Token storage: see the correction under "Transport" above — actual storage is
   `AsyncStorage` on every platform today, not the SecureStore/web-TBD split originally designed.
 
@@ -252,7 +275,10 @@ machine until a real reason to enforce it exists.
   rejected/expired stored access token just forces sign-out today.
 - No resend-verification-email flow, on either side — `register` is the only thing that
   issues a `VerificationToken`. A user who lands on `/verify-email` with a missing, expired,
-  or already-used token has no in-app way to get a fresh link.
+  or already-used token has no in-app way to get a fresh link. `ForgotPasswordScreen`/
+  `ResetPasswordScreen` share this gap for `password_reset`-purpose tokens: a dead reset link's
+  only recovery is going back to `/forgot-password` and starting over, same as today's
+  verify-email dead end.
 
 ---
 
@@ -399,9 +425,10 @@ The `users`/`auth_identities`/`refresh_tokens`/`verification_tokens`/`roles`/`pe
 `role_permissions`/`user_roles`/`audit_log` tables below are SQLAlchemy models
 (`backend/app/models/{user,verification_token,rbac,audit}.py`) with generated migrations
 (`0e452124ee78_add_uac_tables.py` for the first eight, `ceec9dedc42b_add_verification_tokens_table.py`
-for `verification_tokens`) — schema is done; the RBAC-enforcement *code* that uses these tables is
-not (§3), and the `password-reset` endpoints that would write/consume `verification_tokens` rows
-alongside `register`/`verify-email` aren't either (§1). `orders`/`order_items` are intentionally **not yet
+for `verification_tokens`) — schema is done; `password-reset`/`password-reset/confirm` now write/
+consume `verification_tokens` rows the same way `register`/`verify-email` do (§1). The
+RBAC-enforcement *code* that uses the `roles`/`permissions`/`role_permissions`/`user_roles` tables
+is not built (§3). `orders`/`order_items` are intentionally **not yet
 implemented** — that part of the schema needs its plan refined before implementation (open
 questions: import-time dedup key, whether `order_number` is unique per-user or globally, final
 shape of `tracking_numbers`) — so they're listed below as design-only, matching everything else

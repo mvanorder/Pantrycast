@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "6b49adc0-1d36-48fa-bfd9-cbbeda5fd6ea",
     "name": "Pantrycast API",
-    "description": "Backend for the Pantrycast project. Covers every endpoint in docs/api/openapi.json: health checks, order-history CSV upload, and the register/verify-email/login/refresh/logout auth loop (see docs/design/uac-design.md §1). Run the Auth folder top-to-bottom once to populate the tokens the Users/logout requests need — see postman/README.md.",
+    "description": "Backend for the Pantrycast project. Covers every endpoint in docs/api/openapi.json: health checks, order-history CSV upload, and the register/verify-email/login/refresh/logout/password-reset auth loop (see docs/design/uac-design.md §1). Run the Auth folder top-to-bottom once to populate the tokens the Users/logout requests need — see postman/README.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -10,6 +10,7 @@
     { "key": "test_email", "value": "", "type": "string" },
     { "key": "test_password", "value": "", "type": "string" },
     { "key": "verification_token", "value": "", "type": "string" },
+    { "key": "password_reset_token", "value": "", "type": "string" },
     { "key": "access_token", "value": "", "type": "string" },
     { "key": "refresh_token", "value": "", "type": "string" }
   ],
@@ -102,7 +103,7 @@
     },
     {
       "name": "Auth",
-      "description": "Run these in order: Register creates an account and picks a fresh random test_email/test_password (only if those collection variables are still empty), and schedules a verification email; Verify email address needs the token from that email pasted into verification_token manually (see its own description) and isn't part of the auto-chained run; Login exchanges test_email/test_password for a token pair; Refresh rotates it; Logout/Logout all revoke it. Users/Get current user needs the access_token Login (or Refresh) set.",
+      "description": "Run these in order: Register creates an account and picks a fresh random test_email/test_password (only if those collection variables are still empty), and schedules a verification email; Verify email address needs the token from that email pasted into verification_token manually (see its own description) and isn't part of the auto-chained run; Login exchanges test_email/test_password for a token pair; Refresh rotates it; Logout/Logout all revoke it. Request a password reset / Confirm password reset are a second manual pair, like Verify email address — see their own descriptions. Users/Get current user needs the access_token Login (or Refresh) set.",
       "item": [
         {
           "_postman_id": "58de17c8-bc78-40dd-a1fb-8b231e864cd0",
@@ -318,6 +319,73 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('status is 204', () => pm.response.to.have.status(204));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "_postman_id": "a6d7e15e-2102-4027-83aa-ee22e4026cce",
+          "name": "Request a password reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{test_email}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/password-reset",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "password-reset"]
+            },
+            "description": "Needs manual setup for Confirm password reset below, so it's not part of the auto-chained Register -> Log in -> ... sequence. Always returns 204 whether or not test_email matches an account (anti-enumeration) — the raw token only ever appears in the reset email itself, or, with EMAIL_BACKEND=console (the local-dev default), in the backend server logs, as the `token=` query param on the emailed .../reset-password link. Copy that value into the password_reset_token collection variable, then run Confirm password reset."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204 (always, whether or not test_email matched an account)', () => {",
+                  "    pm.response.to.have.status(204);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "_postman_id": "b4cae850-1e09-4f22-ab4d-c63b1c57940a",
+          "name": "Confirm password reset",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{password_reset_token}}\",\n  \"new_password\": \"NewCorrectHorse!Battery2\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/password-reset/confirm",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "password-reset", "confirm"]
+            },
+            "description": "Needs the password_reset_token collection variable set from Request a password reset first (see that request's description). On success this also revokes every refresh token the account holds — the access_token/refresh_token stored by Log in/Refresh above stop working immediately, so re-run Log in afterward (test_password is updated below to the new value) to get a fresh pair."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status is 204 (400/422 means password_reset_token is empty, wrong, expired, or already used - see this request\\'s description)', () => {",
+                  "    pm.response.to.have.status(204);",
+                  "});",
+                  "if (pm.response.code === 204) {",
+                  "    pm.collectionVariables.set('test_password', 'NewCorrectHorse!Battery2');",
+                  "}"
                 ]
               }
             }

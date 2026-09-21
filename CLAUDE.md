@@ -28,7 +28,8 @@ normalization, analysis, and projection are not implemented — see [`README.md`
   Past the initial scaffold: `src/app/index.tsx` is a marketing landing page,
   `src/app/login.tsx` / `src/app/signup.tsx` are working screens wired to the backend
   (`src/api/`, a `fetch`-based client), `src/app/verify-email.tsx` redeems the emailed
-  verification link, and `src/app/dashboard.tsx` is a route-guarded screen behind an
+  verification link, `src/app/forgot-password.tsx` / `src/app/reset-password.tsx` cover the
+  password-reset loop, and `src/app/dashboard.tsx` is a route-guarded screen behind an
   `AuthContext` session provider. Still missing: an account/settings screen and silent
   token refresh on 401 — see
   [`docs/design/uac-design.md`](docs/design/uac-design.md) §1 "Frontend integration" for

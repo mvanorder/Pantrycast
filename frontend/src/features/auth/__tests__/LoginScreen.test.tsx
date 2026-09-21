@@ -220,6 +220,27 @@ describe('LoginScreen', () => {
     expect(screen.getByLabelText('Hide password')).toBeOnTheScreen();
   });
 
+  it('offers a recovery link next to the password field', async () => {
+    await renderWithProviders(<LoginScreen />);
+
+    expect(await screen.findByLabelText('Forgot password?')).toBeOnTheScreen();
+
+    await press('Forgot password?');
+
+    // `push`, not `replace`: recovery is a detour, so back returns here.
+    expect(mockRouterPush).toHaveBeenCalledWith('/forgot-password');
+    expect(mockRouterReplace).not.toHaveBeenCalled();
+  });
+
+  it('keeps the recovery link visible alongside a password validation error', async () => {
+    await renderWithProviders(<LoginScreen onSubmit={jest.fn()} />);
+
+    await press('Log in');
+
+    await waitFor(() => expect(screen.getByText('Enter your password.')).toBeOnTheScreen());
+    expect(screen.getByLabelText('Forgot password?')).toBeOnTheScreen();
+  });
+
   it('sends a would-be signer-upper to the signup screen', async () => {
     await renderWithProviders(<LoginScreen />);
 

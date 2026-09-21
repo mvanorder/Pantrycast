@@ -1,5 +1,13 @@
 import { apiRequest } from '../../../api/client';
-import { fetchCurrentUser, login, logout, register, verifyEmail } from '../api';
+import {
+  confirmPasswordReset,
+  fetchCurrentUser,
+  login,
+  logout,
+  register,
+  requestPasswordReset,
+  verifyEmail,
+} from '../api';
 
 jest.mock('../../../api/client', () => ({ apiRequest: jest.fn() }));
 
@@ -109,5 +117,52 @@ describe('verifyEmail', () => {
     mockApiRequest.mockRejectedValue(new Error('boom'));
 
     await expect(verifyEmail('stale-token')).rejects.toThrow('boom');
+  });
+});
+
+describe('requestPasswordReset', () => {
+  it('POSTs the email to /auth/password-reset', async () => {
+    mockApiRequest.mockResolvedValue(undefined);
+
+    await requestPasswordReset('shopper@example.com');
+
+    expect(mockApiRequest).toHaveBeenCalledWith('/auth/password-reset', {
+      method: 'POST',
+      body: { email: 'shopper@example.com' },
+    });
+  });
+
+  it('resolves for an address with no account, exactly as for one with', async () => {
+    // The endpoint answers 204 either way (anti-enumeration), so there is
+    // nothing here that could tell the two apart — and nothing a caller
+    // could branch on if it wanted to.
+    mockApiRequest.mockResolvedValue(undefined);
+
+    await expect(requestPasswordReset('nobody@example.com')).resolves.toBeUndefined();
+  });
+
+  it('propagates a rejected request (e.g. the server was unreachable)', async () => {
+    mockApiRequest.mockRejectedValue(new Error('boom'));
+
+    await expect(requestPasswordReset('shopper@example.com')).rejects.toThrow('boom');
+  });
+});
+
+describe('confirmPasswordReset', () => {
+  it('POSTs the token and the snake_cased new password to /auth/password-reset/confirm', async () => {
+    mockApiRequest.mockResolvedValue(undefined);
+
+    await confirmPasswordReset('a-raw-token', 'new-passphrase');
+
+    expect(mockApiRequest).toHaveBeenCalledWith('/auth/password-reset/confirm', {
+      method: 'POST',
+      body: { token: 'a-raw-token', new_password: 'new-passphrase' },
+    });
+  });
+
+  it('propagates a rejected request (e.g. expired or already-used token)', async () => {
+    mockApiRequest.mockRejectedValue(new Error('boom'));
+
+    await expect(confirmPasswordReset('stale-token', 'new-passphrase')).rejects.toThrow('boom');
   });
 });
