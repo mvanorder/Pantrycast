@@ -5,7 +5,7 @@ description = "FastAPI backend for Pantrycast"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi~=0.141.1",
-    "uvicorn[standard]~=0.52.3",
+    "uvicorn[standard]>=0.52.3,<0.54.0",
     "python-dotenv~=1.2.2",
     "python-multipart~=0.0.32",
     "sqlalchemy[asyncio]~=2.0.52",
