@@ -13,7 +13,7 @@ dependencies = [
     "alembic>=1.19.1,<1.21.0",
     "pydantic-settings~=2.15.0",
     "argon2-cffi>=23.1,<25.2",
-    "pyjwt[crypto]~=2.13.0",
+    "pyjwt[crypto]>=2.13,<2.15",
     "pydantic[email]>=2.13.4",
     "aiosmtplib~=4.0",
 ]
