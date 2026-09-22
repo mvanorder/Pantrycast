@@ -8,8 +8,9 @@ built. `orders`/`order_items` are deliberately excluded pending plan refinement 
 password-auth HTTP loop is also now built and verified end-to-end against a real Postgres instance:
 `register`/`login`/`refresh`/`logout`/`logout-all`, JWT issuance/verification, and the
 `get_current_user` dependency (§1 "Authentication endpoints"). On the frontend, login/signup/session
-restore/route-guarding and email-verification redemption are built (§1 "Frontend integration");
-account management and silent token refresh on 401 are not. The **email sender** that email
+restore/route-guarding, email-verification redemption, and silent token refresh on a rejected
+access token are built (§1 "Frontend integration"); account management is not. The **email sender**
+that email
 verification and password reset were blocked on now exists: a provider-agnostic SMTP sender
 behind an `EmailSender` protocol, a console fallback for local dev, message templates, the
 `verification_tokens` table + migration, and token generate/hash helpers (`backend/app/mailer/`,
@@ -171,8 +172,8 @@ verification any protected route needs:
 
 - **401** — missing, malformed, expired, or signature-invalid access token. The intended frontend
   response is always the same regardless of *which* of those it was: silently attempt
-  `POST /auth/refresh`, and only surface a login prompt if that also fails. **Not built yet** — see
-  "Frontend integration" below; today a 401 just signs the user out.
+  `POST /auth/refresh`, and only surface a login prompt if that also fails. **Built** — see
+  "Frontend integration" below.
 - **403** — the token is valid but `require_permission` says no (§3's "can this role do this" or
   the ownership check both land here). The frontend should *not* retry or refresh on 403 — retrying
   a refresh won't fix an authorization gap. **Not reachable yet** — nothing returns 403 until §3's
@@ -237,12 +238,20 @@ machine until a real reason to enforce it exists.
 - `frontend/src/features/auth/api.ts` — `login()` → `POST /auth/login`, `register()` →
   `POST /auth/register`, `fetchCurrentUser()` → `GET /users/me`, `logout()` →
   `POST /auth/logout`, `verifyEmail()` → `POST /auth/verify-email`, `requestPasswordReset()` →
-  `POST /auth/password-reset`, `confirmPasswordReset()` → `POST /auth/password-reset/confirm`.
+  `POST /auth/password-reset`, `confirmPasswordReset()` → `POST /auth/password-reset/confirm`,
+  `refresh()` → `POST /auth/refresh`.
 - `frontend/src/features/auth/AuthContext.tsx` — `AuthProvider`/`useAuth()`, tracking
   `status: 'loading' | 'authenticated' | 'unauthenticated'`. Restores the session on app start from
   a stored access token via `fetchCurrentUser`; mounted around the whole app in `_layout.tsx`.
   `signUp()` chains `register()` with a `signIn()` on the same credentials, since `register` issues
-  no token pair of its own.
+  no token pair of its own. If the stored access token is rejected on restore (401 — most commonly
+  just expired, since the server issues 10–15 minute access tokens), `fetchProfileWithRefresh`
+  transparently tries `attemptSilentRefresh()` — reads the stored refresh token, calls `refresh()`,
+  persists the new pair via `storeTokenPair` — and retries `fetchCurrentUser` once with the new
+  access token before falling back to signing out; a non-401 failure (network error) skips the
+  refresh attempt entirely and goes straight to sign-out, same as before. This covers the app's one
+  actual trigger for a stale access token today (relaunching after the token has expired) — there's
+  no other protected call made after mount yet for a mid-session 401 to hit.
 - `frontend/src/app/login.tsx` (route `/login`), `frontend/src/app/signup.tsx` (route `/signup`),
   and route-guarding on `frontend/src/app/dashboard.tsx`, which redirects unauthenticated visitors
   to `/`.
@@ -271,8 +280,6 @@ machine until a real reason to enforce it exists.
 **Known gaps**, called out explicitly so they don't read as accidental omissions:
 
 - No account/profile/settings screen exists.
-- No silent-refresh-on-401 flow (see the 401 bullet under "Error contract" above) — a
-  rejected/expired stored access token just forces sign-out today.
 - No resend-verification-email flow, on either side — `register` is the only thing that
   issues a `VerificationToken`. A user who lands on `/verify-email` with a missing, expired,
   or already-used token has no in-app way to get a fresh link. `ForgotPasswordScreen`/
