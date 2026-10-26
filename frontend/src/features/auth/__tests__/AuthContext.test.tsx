@@ -6,6 +6,7 @@ import {
   fetchCurrentUser,
   login,
   logout,
+  refresh,
   register,
   type NewAccount,
   type TokenPair,
@@ -22,6 +23,7 @@ jest.mock('../api', () => ({
   login: jest.fn(),
   fetchCurrentUser: jest.fn(),
   logout: jest.fn(),
+  refresh: jest.fn(),
   register: jest.fn(),
 }));
 
@@ -35,6 +37,7 @@ jest.mock('../tokenStorage', () => ({
 const mockLogin = login as jest.MockedFunction<typeof login>;
 const mockFetchCurrentUser = fetchCurrentUser as jest.MockedFunction<typeof fetchCurrentUser>;
 const mockLogout = logout as jest.MockedFunction<typeof logout>;
+const mockRefresh = refresh as jest.MockedFunction<typeof refresh>;
 const mockRegister = register as jest.MockedFunction<typeof register>;
 const mockGetAccessToken = getAccessToken as jest.MockedFunction<typeof getAccessToken>;
 const mockGetRefreshToken = getRefreshToken as jest.MockedFunction<typeof getRefreshToken>;
@@ -44,6 +47,13 @@ const mockClearTokenPair = clearTokenPair as jest.MockedFunction<typeof clearTok
 const tokenPair: TokenPair = {
   access_token: 'access-jwt',
   refresh_token: 'refresh-opaque',
+  token_type: 'bearer',
+  expires_in: 900,
+};
+
+const refreshedTokenPair: TokenPair = {
+  access_token: 'new-access-jwt',
+  refresh_token: 'new-refresh-opaque',
   token_type: 'bearer',
   expires_in: 900,
 };
@@ -98,15 +108,63 @@ describe('AuthProvider startup', () => {
     expect(result.current.user).toEqual(profile);
   });
 
-  it('drops a stored token the server rejects and starts signed out', async () => {
+  it('drops a stored token the server rejects and starts signed out when there is no refresh token to fall back on', async () => {
     mockGetAccessToken.mockResolvedValue('stale-jwt');
     mockFetchCurrentUser.mockRejectedValue(new ApiError(401, 'Invalid or expired access token'));
 
     const { result } = await mountAuth();
 
+    expect(mockRefresh).not.toHaveBeenCalled();
     expect(mockClearTokenPair).toHaveBeenCalled();
     expect(result.current.status).toBe('unauthenticated');
     expect(result.current.user).toBeNull();
+  });
+
+  it('silently refreshes and restores the session when the stored access token is rejected', async () => {
+    mockGetAccessToken.mockResolvedValue('stale-jwt');
+    mockGetRefreshToken.mockResolvedValue('refresh-opaque');
+    mockFetchCurrentUser.mockImplementation((accessToken) =>
+      accessToken === 'stale-jwt'
+        ? Promise.reject(new ApiError(401, 'Invalid or expired access token'))
+        : Promise.resolve(profile),
+    );
+    mockRefresh.mockResolvedValue(refreshedTokenPair);
+
+    const { result } = await mountAuth();
+
+    expect(mockRefresh).toHaveBeenCalledWith('refresh-opaque');
+    expect(mockStoreTokenPair).toHaveBeenCalledWith(refreshedTokenPair);
+    expect(mockFetchCurrentUser).toHaveBeenCalledWith('new-access-jwt');
+    expect(mockClearTokenPair).not.toHaveBeenCalled();
+    expect(result.current.status).toBe('authenticated');
+    expect(result.current.user).toEqual(profile);
+  });
+
+  it('drops the session when the stored access token is rejected and the refresh token is also invalid', async () => {
+    mockGetAccessToken.mockResolvedValue('stale-jwt');
+    mockGetRefreshToken.mockResolvedValue('stale-refresh');
+    mockFetchCurrentUser.mockRejectedValue(new ApiError(401, 'Invalid or expired access token'));
+    mockRefresh.mockRejectedValue(new ApiError(401, 'Invalid or expired refresh token'));
+
+    const { result } = await mountAuth();
+
+    expect(mockRefresh).toHaveBeenCalledWith('stale-refresh');
+    expect(mockFetchCurrentUser).toHaveBeenCalledTimes(1);
+    expect(mockClearTokenPair).toHaveBeenCalled();
+    expect(result.current.status).toBe('unauthenticated');
+    expect(result.current.user).toBeNull();
+  });
+
+  it('does not attempt a refresh for a non-401 failure (e.g. the server unreachable)', async () => {
+    mockGetAccessToken.mockResolvedValue('access-jwt');
+    mockGetRefreshToken.mockResolvedValue('refresh-opaque');
+    mockFetchCurrentUser.mockRejectedValue(new ApiError(0, "Couldn't reach the server."));
+
+    const { result } = await mountAuth();
+
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(mockClearTokenPair).toHaveBeenCalled();
+    expect(result.current.status).toBe('unauthenticated');
   });
 
   it('still settles to signed out when the token store itself is unreadable', async () => {

@@ -74,6 +74,23 @@ export function fetchCurrentUser(accessToken: string): Promise<UserProfile> {
 }
 
 /**
+ * Exchanges a refresh token for a new access/refresh pair, rotating the
+ * refresh token server-side (uac-design.md §1 "Sessions and tokens" — the old
+ * token is revoked as part of issuing the new one, and presenting it again
+ * afterward is treated as theft and revokes every session on the account).
+ *
+ * Rejects with {@link ApiError}: `status` 401 if the refresh token is
+ * unknown, expired, or already rotated out, `status` 0 if the server was
+ * unreachable.
+ */
+export function refresh(refreshToken: string): Promise<TokenPair> {
+  return apiRequest<TokenPair>('/auth/refresh', {
+    method: 'POST',
+    body: { refresh_token: refreshToken },
+  });
+}
+
+/**
  * Revokes the given refresh token (this session only). The API answers 204 even
  * for an unknown token, so this resolves as long as the request reaches it.
  */

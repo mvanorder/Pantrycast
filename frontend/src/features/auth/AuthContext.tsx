@@ -8,7 +8,17 @@ import {
   type ReactNode,
 } from 'react';
 
-import { fetchCurrentUser, login, logout, register, type UserProfile } from './api';
+import { ApiError } from '@/api/client';
+
+import {
+  fetchCurrentUser,
+  login,
+  logout,
+  refresh,
+  register,
+  type TokenPair,
+  type UserProfile,
+} from './api';
 import {
   clearTokenPair,
   getAccessToken,
@@ -49,11 +59,61 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
+ * Tries to exchange the stored refresh token for a new pair (uac-design.md §1
+ * "Error contract" — the frontend should silently attempt a refresh rather
+ * than forcing a sign-out on every 401). Persists the new pair on success.
+ *
+ * Returns `null` on any failure — no refresh token stored, or the server
+ * rejects it (expired, already rotated out, reuse-detected) — rather than
+ * throwing, since every caller's only move at that point is to fall back to
+ * signing out; there's nothing to branch on beyond success/failure.
+ */
+async function attemptSilentRefresh(): Promise<TokenPair | null> {
+  try {
+    const refreshToken = await getRefreshToken();
+    if (!refreshToken) return null;
+    const tokens = await refresh(refreshToken);
+    await storeTokenPair(tokens);
+    return tokens;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetches the caller's profile, transparently retrying once via
+ * {@link attemptSilentRefresh} if the stored access token is rejected. Any
+ * other failure (network error, a non-401 status) passes straight through.
+ *
+ * On a failed refresh this rethrows the *original* 401, not a refresh-specific
+ * error — the caller (`restore`, below) treats every rejection the same way
+ * (clear the stored pair, settle on `unauthenticated`), so which error reaches
+ * it doesn't change behavior, only what would show up in a log.
+ */
+async function fetchProfileWithRefresh(accessToken: string): Promise<UserProfile> {
+  try {
+    return await fetchCurrentUser(accessToken);
+  } catch (err) {
+    if (!(err instanceof ApiError) || err.status !== 401) {
+      throw err;
+    }
+    const tokens = await attemptSilentRefresh();
+    if (!tokens) {
+      throw err;
+    }
+    return fetchCurrentUser(tokens.access_token);
+  }
+}
+
+/**
  * Holds the authentication state for the app: hydrates from stored tokens on
  * startup, and exposes `signIn` / `signOut`.
  *
- * Silent access-token refresh on a 401 (uac-design.md §1) is not built yet — a
- * stored token the server rejects is treated as a signed-out state.
+ * A stored access token the server rejects (expired, most commonly — the
+ * server issues 10-15 minute access tokens, uac-design.md §1 "Sessions and
+ * tokens") is not immediately treated as signed-out: `restore` below tries a
+ * silent `POST /auth/refresh` first via {@link fetchProfileWithRefresh}, and
+ * only settles on `unauthenticated` if that also fails.
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('loading');
@@ -69,17 +129,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!cancelled) setStatus('unauthenticated');
           return;
         }
-        const profile = await fetchCurrentUser(accessToken);
+        const profile = await fetchProfileWithRefresh(accessToken);
         if (cancelled) return;
         setUser(profile);
         setStatus('authenticated');
       } catch {
-        // Expired/invalid stored token, the server unreachable, or the token
-        // store itself unreadable (e.g. storage access blocked in an in-app
-        // browser) — every failure here must still resolve `status`, since
-        // screens elsewhere (route guards, `VerifyEmailScreen`'s continue
-        // button) wait on it leaving `loading` and would otherwise hang
-        // forever. Drop the stored pair and start signed out.
+        // An expired access token already went through a silent refresh
+        // attempt inside fetchProfileWithRefresh above, so reaching here means
+        // that failed too (no refresh token stored, or the server rejected
+        // it) — plus the other, unrelated failure modes: the server
+        // unreachable, or the token store itself unreadable (e.g. storage
+        // access blocked in an in-app browser). Every failure here must still
+        // resolve `status`, since screens elsewhere (route guards,
+        // `VerifyEmailScreen`'s continue button) wait on it leaving `loading`
+        // and would otherwise hang forever. Drop the stored pair and start
+        // signed out.
         await clearTokenPair().catch(() => {
           // Clearing is best-effort too — a storage failure here shouldn't
           // stop `status` from settling either.
